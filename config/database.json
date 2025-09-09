@@ -1,8 +1,0 @@
-{
-  "address": "localhost",
-  "userName": "postgres",
-  "password": "admin",
-  "port": 5432,
-  "database": "postgres",
-  "fileRepository": "Unknown"
-}
