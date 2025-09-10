@@ -3,7 +3,7 @@ package de.lino.database.provider.entity;
 /*
  * MIT License
  *
- * Copyright (c) lino, 09.09.2025
+ * Copyright (c) lino, 10.09.2025
  * Copyright (c) contributors
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -31,7 +31,7 @@ import lombok.RequiredArgsConstructor;
 
 @Getter
 @RequiredArgsConstructor
-public class DatabaseEntity {
+public class DatabaseEntry {
 
     private final String id;
     private final JsonDocument metaData;

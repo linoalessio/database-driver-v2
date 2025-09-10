@@ -30,7 +30,7 @@ import de.lino.database.configuration.Credentials;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.json.file.FileProvider;
 import de.lino.database.provider.DatabaseSection;
-import de.lino.database.provider.entity.DatabaseEntity;
+import de.lino.database.provider.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 
@@ -48,7 +48,7 @@ public class JsonDatabaseSection implements DatabaseSection {
     private final Credentials credentials;
 
     private final Path parent;
-    private final List<DatabaseEntity> entries;
+    private final List<DatabaseEntry> entries;
 
     public JsonDatabaseSection(@NotNull String name, @NotNull Credentials credentials) {
 
@@ -62,7 +62,7 @@ public class JsonDatabaseSection implements DatabaseSection {
 
             final String id = path.getName().replace(".json", "");
             final JsonDocument document = JsonDocument.load(path.toPath());
-            this.entries.add(new DatabaseEntity(id, document));
+            this.entries.add(new DatabaseEntry(id, document));
 
         });
 
@@ -74,7 +74,7 @@ public class JsonDatabaseSection implements DatabaseSection {
         if (this.exists(id)) return;
 
         new JsonDocument().append("id", id).append("data", document).write(Paths.get(this.parent.toString(), id + ".json"));
-        this.entries.add(new DatabaseEntity(id, document));
+        this.entries.add(new DatabaseEntry(id, document));
 
     }
 
@@ -97,7 +97,7 @@ public class JsonDatabaseSection implements DatabaseSection {
         Objects.requireNonNull(this.findEntryById(id).orElse(null)).getMetaData().append("id", id).append("data", data).write(Paths.get(this.parent.toString(), id + ".json"));
 
         this.entries.removeIf(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id));
-        this.entries.add(new DatabaseEntity(id, document));
+        this.entries.add(new DatabaseEntry(id, document));
 
 
     }
@@ -129,7 +129,7 @@ public class JsonDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public Optional<DatabaseEntity> findEntryById(@NotNull String id) {
+    public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
         return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id)).findFirst().orElse(null));
     }
 

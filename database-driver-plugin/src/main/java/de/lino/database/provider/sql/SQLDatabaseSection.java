@@ -29,7 +29,7 @@ import com.google.common.collect.Lists;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.DatabaseType;
-import de.lino.database.provider.entity.DatabaseEntity;
+import de.lino.database.provider.entity.DatabaseEntry;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import org.jetbrains.annotations.NotNull;
@@ -47,7 +47,7 @@ public class SQLDatabaseSection implements DatabaseSection {
     private final String name;
     private final SQLExecution sqlExecution;
 
-    private final List<DatabaseEntity> entries;
+    private final List<DatabaseEntry> entries;
 
     @SneakyThrows
     public SQLDatabaseSection(@NotNull DatabaseType databaseType, @NotNull String name, @NotNull SQLExecution sqlExecution) {
@@ -77,7 +77,7 @@ public class SQLDatabaseSection implements DatabaseSection {
 
                     try (final InputStream inputStream = new ByteArrayInputStream(data)) {
                         JsonDocument jsonDocument = new JsonDocument(inputStream);
-                        this.entries.add(new DatabaseEntity(id, jsonDocument));
+                        this.entries.add(new DatabaseEntry(id, jsonDocument));
                     } catch (final IOException exception) {
                         exception.printStackTrace();
                     }
@@ -98,7 +98,7 @@ public class SQLDatabaseSection implements DatabaseSection {
 
         if (this.exists(id)) return;
         this.sqlExecution.executeUpdate("INSERT INTO " + this.name + " (id, data) VALUES (?, ?);", id, document.toBytes());
-        this.entries.add(new DatabaseEntity(id, document));
+        this.entries.add(new DatabaseEntry(id, document));
 
     }
 
@@ -109,7 +109,7 @@ public class SQLDatabaseSection implements DatabaseSection {
 
         this.sqlExecution.executeUpdate("UPDATE " + this.name + " SET data = ? WHERE id = ?", document.toBytes(), id);
         this.entries.removeIf(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id));
-        this.entries.add(new DatabaseEntity(id, document));
+        this.entries.add(new DatabaseEntry(id, document));
 
     }
 
@@ -140,7 +140,7 @@ public class SQLDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public Optional<DatabaseEntity> findEntryById(@NotNull String id) {
+    public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
         return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id)).findFirst().orElse(null));
     }
 

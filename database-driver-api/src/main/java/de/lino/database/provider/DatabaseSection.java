@@ -26,7 +26,7 @@ package de.lino.database.provider;
  */
 
 import de.lino.database.json.JsonDocument;
-import de.lino.database.provider.entity.DatabaseEntity;
+import de.lino.database.provider.entity.DatabaseEntry;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
 
@@ -83,16 +83,16 @@ public interface DatabaseSection {
     /**
      * Find a matching json document from the database
      * @param id: primary key
-     * @return Optional<DatabaseEntity>
+     * @return Optional<DatabaseEntry>
      */
-    Optional<DatabaseEntity> findEntryById(@NotNull String id);
+    Optional<DatabaseEntry> findEntryById(@NotNull String id);
 
     /**
      * Get an unmodifiable list of all database entities
      * @return
      */
     @UnmodifiableView
-    List<DatabaseEntity> getEntries();
+    List<DatabaseEntry> getEntries();
 
     /**
      * Execute insert process async
@@ -146,15 +146,15 @@ public interface DatabaseSection {
      * Execute find entry process async
      * @return CompletableFuture, type Optional<JsonDocument>
      */
-    default CompletableFuture<Optional<DatabaseEntity>> findEntryByIdAsync(@NotNull String id) {
+    default CompletableFuture<Optional<DatabaseEntry>> findEntryByIdAsync(@NotNull String id) {
         return CompletableFuture.supplyAsync(() -> findEntryById(id));
     }
 
     /**
      * Execute getEntries process async
-     * @return CompletableFuture, type List<DatabaseEntity>
+     * @return CompletableFuture, type List<DatabaseEntry>
      */
-    default CompletableFuture<List<DatabaseEntity>> getEntriesAsync() {
+    default CompletableFuture<List<DatabaseEntry>> getEntriesAsync() {
         return CompletableFuture.supplyAsync(this::getEntries);
     }
 

@@ -31,7 +31,7 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.provider.DatabaseSection;
-import de.lino.database.provider.entity.DatabaseEntity;
+import de.lino.database.provider.entity.DatabaseEntry;
 import lombok.Getter;
 import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
@@ -44,7 +44,7 @@ import java.util.function.Consumer;
 public class MongoDBDatabaseSection implements DatabaseSection {
 
     private final String name;
-    private final List<DatabaseEntity> entries;
+    private final List<DatabaseEntry> entries;
 
     private final MongoCollection<Document> collection;
 
@@ -55,7 +55,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
         this.collection = mongoDatabase.getCollection(name);
         this.collection.find().forEach((Consumer<Document>) document ->
-                this.entries.add(new DatabaseEntity(document.getString("id"), new JsonDocument(document.toJson()))));
+                this.entries.add(new DatabaseEntry(document.getString("id"), new JsonDocument(document.toJson()))));
 
     }
 
@@ -66,7 +66,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
         final String json = new JsonDocument().append("id", id).append(document).toJson();
 
         this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
-        this.entries.add(new DatabaseEntity(id, document));
+        this.entries.add(new DatabaseEntry(id, document));
 
     }
 
@@ -79,7 +79,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
         this.collection.replaceOne(Filters.eq("id", id), new JsonDocument().getGson().fromJson(json, Document.class));
 
         this.entries.removeIf(databaseEntity -> databaseEntity.getId().equals(id));
-        this.entries.add(new DatabaseEntity(id, document));
+        this.entries.add(new DatabaseEntry(id, document));
 
     }
 
@@ -111,7 +111,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public Optional<DatabaseEntity> findEntryById(@NotNull String id) {
+    public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
         return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equals(id)).findFirst().orElse(null));
     }
 
