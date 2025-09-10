@@ -25,7 +25,6 @@ package de.lino.database.provider;
  * SOFTWARE.
  */
 
-import de.lino.database.json.JsonDocument;
 import de.lino.database.provider.entity.DatabaseEntry;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
@@ -44,17 +43,15 @@ public interface DatabaseSection {
 
     /**
      * Insert a new json document into the database
-     * @param id: primary key
-     * @param document: document
+     * @param databaseEntry: DatabaseEntry object
      */
-    void insert(@NotNull String id, @NotNull JsonDocument document);
+    void insert(@NotNull DatabaseEntry databaseEntry);
 
     /**
      * Update an existing json document from the database
-     * @param id: primary key
-     * @param document: document
+     * @param databaseEntry: DatabaseEntry object
      */
-    void update(@NotNull String id, @NotNull JsonDocument document);
+    void update(@NotNull DatabaseEntry databaseEntry);
 
     /**
      * Delete an existing json document from the database
@@ -98,16 +95,16 @@ public interface DatabaseSection {
      * Execute insert process async
      * @return CompletableFuture, type Void
      */
-    default CompletableFuture<Void> insertAsync(@NotNull String id, @NotNull JsonDocument document) {
-        return CompletableFuture.runAsync(() -> insert(id, document));
+    default CompletableFuture<Void> insertAsync(@NotNull DatabaseEntry databaseEntry) {
+        return CompletableFuture.runAsync(() -> insert(databaseEntry));
     }
 
     /**
      * Execute update process async
      * @return CompletableFuture, type Void
      */
-    default CompletableFuture<Void> updateAsync(@NotNull String id, @NotNull JsonDocument document) {
-        return CompletableFuture.runAsync(() -> update(id, document));
+    default CompletableFuture<Void> updateAsync(@NotNull DatabaseEntry databaseEntry) {
+        return CompletableFuture.runAsync(() -> update(databaseEntry));
     }
 
     /**

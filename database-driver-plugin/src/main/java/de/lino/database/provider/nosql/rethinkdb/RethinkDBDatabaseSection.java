@@ -79,22 +79,22 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public void insert(@NotNull String id, @NotNull JsonDocument document) {
+    public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(id)) return;
-        this.table.insert(this.mapping(id, document)).runNoReply(this.connection);
-        this.entries.add(new DatabaseEntry(id, document));
+        if (this.exists(databaseEntry.getId())) return;
+        this.table.insert(this.mapping(databaseEntry)).runNoReply(this.connection);
+        this.entries.add(databaseEntry);
 
     }
 
     @Override
-    public void update(@NotNull String id, @NotNull JsonDocument document) {
+    public void update(@NotNull DatabaseEntry databaseEntry) {
 
-        if (!this.exists(id)) return;
-        this.table.update(this.mapping(id, document)).runNoReply(this.connection);
+        if (!this.exists(databaseEntry.getId())) return;
+        this.table.update(this.mapping(databaseEntry)).runNoReply(this.connection);
 
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equals(id));
-        this.entries.add(new DatabaseEntry(id, document));
+        this.entries.remove(databaseEntry);
+        this.entries.add(databaseEntry);
 
     }
 
@@ -133,8 +133,8 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
         return RethinkDB.r.hashMap("id", id);
     }
 
-    private Map<Object, Object> mapping(@NotNull String id, @NotNull JsonDocument document) {
-        return this.mapping(id).with("values", document.toString());
+    private Map<Object, Object> mapping(@NotNull DatabaseEntry databaseEntry) {
+        return this.mapping(databaseEntry.getId()).with("values", databaseEntry.getMetaData().toString());
     }
 
 }
