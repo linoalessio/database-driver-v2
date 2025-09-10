@@ -60,26 +60,26 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public void insert(@NotNull String id, @NotNull JsonDocument document) {
+    public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(id)) return;
-        final String json = new JsonDocument().append("id", id).append(document).toJson();
+        if (this.exists(databaseEntry.getId())) return;
+        final String json = new JsonDocument().append("id", databaseEntry.getId()).append(databaseEntry.getMetaData()).toJson();
 
         this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
-        this.entries.add(new DatabaseEntry(id, document));
+        this.entries.add(databaseEntry);
 
     }
 
     @Override
-    public void update(@NotNull String id, @NotNull JsonDocument document) {
+    public void update(@NotNull DatabaseEntry databaseEntry) {
 
-        if (!this.exists(id)) return;
+        if (!this.exists(databaseEntry.getId())) return;
 
-        final String json = new JsonDocument().append("id", id).append(document).toJson();
-        this.collection.replaceOne(Filters.eq("id", id), new JsonDocument().getGson().fromJson(json, Document.class));
+        final String json = new JsonDocument().append("id", databaseEntry.getId()).append(databaseEntry.getMetaData()).toJson();
+        this.collection.replaceOne(Filters.eq("id", databaseEntry.getId()), new JsonDocument().getGson().fromJson(json, Document.class));
 
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equals(id));
-        this.entries.add(new DatabaseEntry(id, document));
+        this.entries.remove(databaseEntry);
+        this.entries.add(databaseEntry);
 
     }
 

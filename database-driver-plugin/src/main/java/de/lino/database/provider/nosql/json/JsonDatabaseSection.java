@@ -69,35 +69,37 @@ public class JsonDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public void insert(@NotNull String id, @NotNull JsonDocument document) {
+    public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(id)) return;
+        if (this.exists(databaseEntry.getId())) return;
 
-        new JsonDocument().append("id", id).append("data", document).write(Paths.get(this.parent.toString(), id + ".json"));
-        this.entries.add(new DatabaseEntry(id, document));
+        new JsonDocument().append("id", databaseEntry).append("data", databaseEntry.getMetaData()).write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
+        this.entries.add(databaseEntry);
 
     }
 
     @Override
-    public void update(@NotNull String id, @NotNull JsonDocument document) {
+    public void update(@NotNull DatabaseEntry databaseEntry) {
 
-        if (!this.exists(id)) return;
+        if (!this.exists(databaseEntry.getId())) return;
 
-        if (document.contains("id")) {
+        if (databaseEntry.getMetaData().contains("id")) {
 
-            this.delete(id);
-            this.insert(id, document.getMetaData("data"));
+            this.delete(databaseEntry.getId());
+            this.insert(databaseEntry);
 
             return;
         }
 
-        final JsonDocument data = Objects.requireNonNull(this.findEntryById(id).orElse(null)).getMetaData();
+        final JsonDocument data = Objects.requireNonNull(this.findEntryById(databaseEntry.getId()).orElse(null)).getMetaData();
 
-        document.asMap().forEach((key, value) -> data.getJsonObject().add(key, value));
-        Objects.requireNonNull(this.findEntryById(id).orElse(null)).getMetaData().append("id", id).append("data", data).write(Paths.get(this.parent.toString(), id + ".json"));
+        databaseEntry.getMetaData().asMap().forEach((key, value) -> data.getJsonObject().add(key, value));
+        Objects.requireNonNull(this.findEntryById(databaseEntry.getId()).orElse(null))
+                .getMetaData().append("id", databaseEntry.getId())
+                .append("data", data).write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
 
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id));
-        this.entries.add(new DatabaseEntry(id, document));
+        this.entries.remove(databaseEntry);
+        this.entries.add(databaseEntry);
 
 
     }

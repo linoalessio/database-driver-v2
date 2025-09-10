@@ -108,8 +108,7 @@ public class DefaultDatabaseRepository extends DatabaseRepository {
                 destination.deleteSection(section.getName());
 
             final DatabaseSection databaseSection = destination.createSection(section.getName());
-            section.getEntries().forEach(databaseEntity ->
-                    databaseSection.insert(databaseEntity.getId(), databaseEntity.getMetaData()));
+            section.getEntries().forEach(databaseSection::insert);
 
         });
 

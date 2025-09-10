@@ -94,22 +94,22 @@ public class SQLDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public void insert(@NotNull String id, @NotNull JsonDocument document) {
+    public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(id)) return;
-        this.sqlExecution.executeUpdate("INSERT INTO " + this.name + " (id, data) VALUES (?, ?);", id, document.toBytes());
-        this.entries.add(new DatabaseEntry(id, document));
+        if (this.exists(databaseEntry.getId())) return;
+        this.sqlExecution.executeUpdate("INSERT INTO " + this.name + " (id, data) VALUES (?, ?);", databaseEntry.getId(), databaseEntry.getMetaData().toBytes());
+        this.entries.add(databaseEntry);
 
     }
 
     @Override
-    public void update(@NotNull String id, @NotNull JsonDocument document) {
+    public void update(@NotNull DatabaseEntry databaseEntry) {
 
-        if (!this.exists(id)) return;
+        if (!this.exists(databaseEntry.getId())) return;
 
-        this.sqlExecution.executeUpdate("UPDATE " + this.name + " SET data = ? WHERE id = ?", document.toBytes(), id);
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id));
-        this.entries.add(new DatabaseEntry(id, document));
+        this.sqlExecution.executeUpdate("UPDATE " + this.name + " SET data = ? WHERE id = ?", databaseEntry.getMetaData().toBytes(), databaseEntry.getId());
+        this.entries.remove(databaseEntry);
+        this.entries.add(databaseEntry);
 
     }
 
