@@ -51,12 +51,16 @@ public class SQLDatabaseProvider implements DatabaseProvider {
         this.sqlExecution = sqlExecution;
         this.databaseSections = Maps.newConcurrentMap();
 
-        this.sqlExecution.executeQueryAsync("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='PUBLIC'", resultSet -> {
+        String tablePattern = "";
+        if (databaseType == DatabaseType.SQLITE) tablePattern = "SELECT name AS TABLE_NAME FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';";
+        else tablePattern = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='PUBLIC'";
+
+        this.sqlExecution.executeQueryAsync(tablePattern, resultSet -> {
 
             try {
 
                 while (resultSet.next()) {
-                    String tableName = resultSet.getString("table_name");
+                    String tableName = resultSet.getString("TABLE_NAME");
                     this.databaseSections.put(tableName, new SQLDatabaseSection(databaseType, tableName, this.sqlExecution));
                 }
 

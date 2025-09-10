@@ -60,8 +60,6 @@ new DefaultDatabaseRepository();
 * Register a DatabaseProvider with an id (int), databaseType and the given credentials
 * The method returns a DatabaseProvider.class
 *
-* If you use the JsonDatabaseProvider (DatabaseType.JSON), than you need the adjust your credentials to the following
-* new Credentials(Paths.get("CONFIG_FILE_PATH"), Paths.get("JSON_DATABASE_REPOSITORY_PATH"));
 * DatabaseType: MY_SQL, POSTGRE_SQL, H2_DB, MARIA_DB, SQLITE, MONGO_DB, RETHINK_DB, JSON
 */
 final Credentials credentials = new Credentials(Paths.get("config/sample-database.json"), "localhost" , "userName" , "password", port , "database");
@@ -167,4 +165,19 @@ final List<DatabaseEntry> entries = databaseSection.getEntries();
     }
   }
 }
+```
+
+*Database Credentials*
+``` java
+// SQL
+final Credentials mySQL = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
+final Credentials mariadb = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
+final Credentials postgreSQL = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
+final Credentials sqlite = new Credentials(Paths.get("CONFIG_PATH"), Paths.get("DATABASE_NAME" + ".db"));
+final Credentials h2db = new Credentials(Paths.get("CONFIG_PATH"), Paths.get("DATABASE_REPOSITORY_PATH"));
+
+// NoSQL
+final Credentials mongodb = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
+final Credentials rethinkDB = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
+final Credentials json = new Credentials(Paths.get("CONFIG_PATH"), Paths.get("DATABASE_REPOSITORY_PATH"));
 ```

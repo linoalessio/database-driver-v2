@@ -47,10 +47,29 @@ public class SQLExecution {
     public SQLExecution(@NotNull DatabaseType databaseType, @NotNull Credentials credentials) {
 
         final HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl(String.format(ARGUMENTS, databaseType.getType(), credentials.getAddress(), credentials.getPort(), credentials.getDatabase()));
-        hikariConfig.setDriverClassName(databaseType.getDriverClass());
-        hikariConfig.setUsername(credentials.getUserName());
-        hikariConfig.setPassword(credentials.getPassword());
+
+        switch (databaseType) {
+
+            case MY_SQL, POSTGRE_SQL, MARIA_DB, MONGO_DB, RETHINK_DB -> {
+                hikariConfig.setJdbcUrl(String.format(ARGUMENTS, databaseType.getType(), credentials.getAddress(), credentials.getPort(), credentials.getDatabase()));
+                hikariConfig.setDriverClassName(databaseType.getDriverClass());
+                hikariConfig.setUsername(credentials.getUserName());
+                hikariConfig.setPassword(credentials.getPassword());
+            }
+            case SQLITE -> {
+                hikariConfig.setJdbcUrl("jdbc:sqlite:" + credentials.getFileRepository());
+                hikariConfig.setDriverClassName(databaseType.getDriverClass());
+                hikariConfig.setUsername(credentials.getUserName());
+                hikariConfig.setPassword(credentials.getPassword());
+            }
+            case H2_DB -> {
+                hikariConfig.setJdbcUrl("jdbc:h2:./" + credentials.getFileRepository());
+                hikariConfig.setDriverClassName(databaseType.getDriverClass());
+                hikariConfig.setUsername("sa");
+                hikariConfig.setPassword("");
+            }
+
+        }
 
         hikariConfig.addDataSourceProperty("cachePrepStmts", "true");
         hikariConfig.addDataSourceProperty("prepStmtCacheSize", "250");
