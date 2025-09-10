@@ -1,4 +1,4 @@
-# DatabaseDriver: Multiselect Database Management System
+# Multiselect Database Management System
 
 ## Supported SQL and NoSQL Databases
 
@@ -62,7 +62,7 @@ new DefaultDatabaseRepository();
 *
 * If you use the JsonDatabaseProvider (DatabaseType.JSON), than you need the adjust your credentials to the following
 * new Credentials(Paths.get("CONFIG_FILE_PATH"), Paths.get("JSON_DATABASE_REPOSITORY_PATH"));
-*
+* DatabaseType: MY_SQL, POSTGRE_SQL, H2_DB, MARIA_DB, SQLITE, MONGO_DB, RETHINK_DB, JSON
 */
 final Credentials credentials = new Credentials(Paths.get("config/sample-database.json"), "localhost" , "userName" , "password", port , "database");
 final DatabaseProvider databaseProvider = DatabaseRepository.getInstance().registerDatabaseProvider(id, databaseType, credentials);
