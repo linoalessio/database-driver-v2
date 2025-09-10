@@ -1,4 +1,4 @@
-# DatabaseDriver: Multiselect Database Management System
+# Multiselect Database Management System
 
 ## Supported SQL and NoSQL Databases
 
