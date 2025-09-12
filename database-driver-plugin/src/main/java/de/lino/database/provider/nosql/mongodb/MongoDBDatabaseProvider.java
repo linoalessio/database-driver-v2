@@ -39,13 +39,13 @@ import org.jetbrains.annotations.UnmodifiableView;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.function.Consumer;
 
 public class MongoDBDatabaseProvider implements DatabaseProvider {
 
+    private static final List<String> FORBIDDEN = Arrays.asList("system.version", "system.users");
     private final Map<String, DatabaseSection> databaseSections;
 
     private final MongoClient mongoClient;
@@ -54,6 +54,7 @@ public class MongoDBDatabaseProvider implements DatabaseProvider {
     public MongoDBDatabaseProvider(@NotNull Credentials credentials) {
 
         this.databaseSections = Maps.newConcurrentMap();
+
         this.mongoClient = MongoClients.create(MessageFormat.format(
                 "mongodb://{0}:{1}@{2}:{3}/{4}",
                 credentials.getUserName(),
@@ -65,8 +66,10 @@ public class MongoDBDatabaseProvider implements DatabaseProvider {
 
         this.mongoDatabase = this.mongoClient.getDatabase(credentials.getDatabase());
 
-        Objects.requireNonNull(this.mongoClient).listDatabaseNames().forEach((Consumer<String>) name ->
-                this.databaseSections.put(name, new MongoDBDatabaseSection(this.mongoDatabase, name)));
+        for (String name : this.mongoDatabase.listCollectionNames()) {
+            if (FORBIDDEN.contains(name)) continue;
+            this.databaseSections.put(name, new MongoDBDatabaseSection(this.mongoDatabase, name));
+        }
 
     }
 

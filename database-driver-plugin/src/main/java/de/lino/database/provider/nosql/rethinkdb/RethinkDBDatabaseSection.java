@@ -134,7 +134,7 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
     }
 
     private Map<Object, Object> mapping(@NotNull DatabaseEntry databaseEntry) {
-        return this.mapping(databaseEntry.getId()).with("values", databaseEntry.getMetaData().toString());
+        return this.mapping(databaseEntry.getId()).with("values", databaseEntry.getDocument().toString());
     }
 
 }

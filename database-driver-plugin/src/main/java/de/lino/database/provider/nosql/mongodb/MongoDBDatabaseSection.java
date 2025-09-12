@@ -38,7 +38,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Consumer;
 
 @Getter
 public class MongoDBDatabaseSection implements DatabaseSection {
@@ -52,10 +51,16 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
         this.name = name;
         this.entries = Lists.newCopyOnWriteArrayList();
-
         this.collection = mongoDatabase.getCollection(name);
-        this.collection.find().forEach((Consumer<Document>) document ->
-                this.entries.add(new DatabaseEntry(document.getString("id"), new JsonDocument(document.toJson()))));
+
+        for (Document document : this.collection.find()) {
+
+            if (!document.containsKey("data")) throw new RuntimeException("No meta data found in document");
+
+            final JsonDocument jsonDocument = new JsonDocument(document.toJson());
+            this.entries.add(new DatabaseEntry(document.getString("id"), new JsonDocument("data", jsonDocument.getMetaData("data"))));
+
+        }
 
     }
 
@@ -63,8 +68,8 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
         if (this.exists(databaseEntry.getId())) return;
-        final String json = new JsonDocument().append("id", databaseEntry.getId()).append(databaseEntry.getMetaData()).toJson();
 
+        final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getDocument()).toJson();
         this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
         this.entries.add(databaseEntry);
 
@@ -75,8 +80,8 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
         if (!this.exists(databaseEntry.getId())) return;
 
-        final String json = new JsonDocument().append("id", databaseEntry.getId()).append(databaseEntry.getMetaData()).toJson();
-        this.collection.replaceOne(Filters.eq("id", databaseEntry.getId()), new JsonDocument().getGson().fromJson(json, Document.class));
+        final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData()).toJson();
+        this.collection.updateOne(Filters.eq("id", databaseEntry.getId()), new Document("$set", new JsonDocument().getGson().fromJson(json, Document.class)));
 
         this.entries.remove(databaseEntry);
         this.entries.add(databaseEntry);
@@ -107,7 +112,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
     @Override
     public boolean exists(@NotNull String id) {
-        return this.entries.stream().anyMatch(databaseEntity -> databaseEntity.getId().equals(id));
+        return this.entries.stream().anyMatch(databaseEntry -> databaseEntry.getId().equals(id));
     }
 
     @Override
