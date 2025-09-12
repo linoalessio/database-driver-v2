@@ -66,9 +66,9 @@ public interface DatabaseSection {
     long count();
 
     /**
-     * Delete this database section
+     * Clear this database section
      */
-    void delete();
+    void clear();
 
     /**
      * Check whether a json document exists
@@ -124,11 +124,11 @@ public interface DatabaseSection {
     }
 
     /**
-     * Execute delete section process async
+     * Execute clear section process async
      * @return CompletableFuture, type Void
      */
-    default CompletableFuture<Void> deleteAsync() {
-        return CompletableFuture.runAsync(this::delete);
+    default CompletableFuture<Void> clearAsync() {
+        return CompletableFuture.runAsync(this::clear);
     }
 
     /**

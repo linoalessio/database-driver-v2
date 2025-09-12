@@ -108,4 +108,10 @@ public class RethinkDBDatabaseProvider implements DatabaseProvider {
         return this.databaseSections.get(name);
     }
 
+    @Override
+    public void clear() {
+        for (DatabaseSection databaseSection : this.getSections()) databaseSection.clear();
+        this.databaseSections.clear();
+    }
+
 }

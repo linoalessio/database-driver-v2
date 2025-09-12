@@ -114,7 +114,7 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public void delete() {
+    public void clear() {
         this.table.delete().runNoReply(this.connection);
         this.entries.clear();
     }

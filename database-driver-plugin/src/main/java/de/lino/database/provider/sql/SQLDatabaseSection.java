@@ -129,7 +129,7 @@ public class SQLDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public void delete() {
+    public void clear() {
         this.sqlExecution.executeUpdate("TRUNCATE TABLE " + this.name);
         this.entries.clear();
     }

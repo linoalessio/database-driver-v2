@@ -122,8 +122,8 @@ public class JsonDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public void delete() {
-        FileProvider.getInstance().deleteDirectory(this.parent);
+    public void clear() {
+        FileProvider.getInstance().deleteAllFilesInDirectory(this.parent);
         this.entries.clear();
     }
 
