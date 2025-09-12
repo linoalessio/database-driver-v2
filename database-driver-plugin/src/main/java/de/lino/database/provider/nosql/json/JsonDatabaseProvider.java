@@ -97,4 +97,10 @@ public class JsonDatabaseProvider implements DatabaseProvider {
         return this.databaseSections.get(name);
     }
 
+    @Override
+    public void clear() {
+        for (DatabaseSection databaseSection : this.getSections()) databaseSection.clear();
+        this.databaseSections.clear();
+    }
+
 }

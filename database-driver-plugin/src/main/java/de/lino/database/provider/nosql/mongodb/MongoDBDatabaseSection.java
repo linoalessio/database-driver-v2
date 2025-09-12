@@ -105,8 +105,8 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     }
 
     @Override
-    public void delete() {
-        this.collection.drop();
+    public void clear() {
+        this.collection.deleteMany(new Document());
         this.entries.clear();
     }
 

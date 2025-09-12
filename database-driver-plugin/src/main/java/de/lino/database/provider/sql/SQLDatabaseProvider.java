@@ -110,4 +110,12 @@ public class SQLDatabaseProvider implements DatabaseProvider {
     public DatabaseSection getSection(@NotNull String name) {
         return this.databaseSections.get(name);
     }
+
+    @Override
+    public void clear() {
+        for (DatabaseSection databaseSection : this.getSections()) databaseSection.clear();
+        this.databaseSections.clear();
+    }
+
+
 }

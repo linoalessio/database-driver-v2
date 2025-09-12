@@ -77,6 +77,11 @@ public interface DatabaseProvider {
     DatabaseSection getSection(@NotNull String name);
 
     /**
+     * Remove all sections from the provider
+     */
+    void clear();
+
+    /**
      * Execute shutdown process async
      * @return CompletableFuture, type Void
      */
@@ -122,6 +127,14 @@ public interface DatabaseProvider {
      */
     default CompletableFuture<DatabaseSection> getSectionAsync(@NotNull String name) {
         return CompletableFuture.supplyAsync(() -> getSection(name));
+    }
+
+    /**
+     * Execute clear process async
+     * @return CompletableFuture, type Void
+     */
+    default CompletableFuture<Void> clearAsync() {
+        return CompletableFuture.runAsync(this::clear);
     }
 
 }
