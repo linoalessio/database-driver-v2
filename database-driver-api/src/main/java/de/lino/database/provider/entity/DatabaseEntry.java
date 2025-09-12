@@ -29,11 +29,20 @@ import de.lino.database.json.JsonDocument;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
-@Getter
 @RequiredArgsConstructor
 public class DatabaseEntry {
 
+    @Getter
     private final String id;
+
     private final JsonDocument metaData;
+
+    public JsonDocument getDocument() {
+        return this.metaData;
+    }
+
+    public JsonDocument getMetaData() {
+        return this.metaData.getMetaData("data");
+    }
 
 }

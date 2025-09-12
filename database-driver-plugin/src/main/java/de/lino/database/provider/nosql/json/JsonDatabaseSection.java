@@ -83,7 +83,7 @@ public class JsonDatabaseSection implements DatabaseSection {
 
         if (!this.exists(databaseEntry.getId())) return;
 
-        if (databaseEntry.getMetaData().contains("id")) {
+        if (databaseEntry.getDocument().contains("id")) {
 
             this.delete(databaseEntry.getId());
             this.insert(databaseEntry);
@@ -95,8 +95,10 @@ public class JsonDatabaseSection implements DatabaseSection {
 
         databaseEntry.getMetaData().asMap().forEach((key, value) -> data.getJsonObject().add(key, value));
         Objects.requireNonNull(this.findEntryById(databaseEntry.getId()).orElse(null))
-                .getMetaData().append("id", databaseEntry.getId())
-                .append("data", data).write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
+                .getDocument()
+                .append("id", databaseEntry.getId())
+                .append("data", data)
+                .write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
 
         this.entries.remove(databaseEntry);
         this.entries.add(databaseEntry);

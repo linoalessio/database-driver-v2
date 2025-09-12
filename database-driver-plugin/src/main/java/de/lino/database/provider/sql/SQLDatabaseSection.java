@@ -97,7 +97,7 @@ public class SQLDatabaseSection implements DatabaseSection {
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
         if (this.exists(databaseEntry.getId())) return;
-        this.sqlExecution.executeUpdate("INSERT INTO " + this.name + " (id, data) VALUES (?, ?);", databaseEntry.getId(), databaseEntry.getMetaData().toBytes());
+        this.sqlExecution.executeUpdate("INSERT INTO " + this.name + " (id, data) VALUES (?, ?);", databaseEntry.getId(), databaseEntry.getDocument().toBytes());
         this.entries.add(databaseEntry);
 
     }
@@ -107,7 +107,7 @@ public class SQLDatabaseSection implements DatabaseSection {
 
         if (!this.exists(databaseEntry.getId())) return;
 
-        this.sqlExecution.executeUpdate("UPDATE " + this.name + " SET data = ? WHERE id = ?", databaseEntry.getMetaData().toBytes(), databaseEntry.getId());
+        this.sqlExecution.executeUpdate("UPDATE " + this.name + " SET data = ? WHERE id = ?", databaseEntry.getDocument().toBytes(), databaseEntry.getId());
         this.entries.remove(databaseEntry);
         this.entries.add(databaseEntry);
 
@@ -119,7 +119,7 @@ public class SQLDatabaseSection implements DatabaseSection {
         if (!this.exists(id)) return;
 
         this.sqlExecution.executeUpdate("DELETE FROM " + this.name + " WHERE id = ?", id);
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id));
+        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equals(id));
 
     }
 
@@ -136,12 +136,12 @@ public class SQLDatabaseSection implements DatabaseSection {
 
     @Override
     public boolean exists(@NotNull String id) {
-        return this.entries.stream().anyMatch(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id));
+        return this.entries.stream().anyMatch(databaseEntity -> databaseEntity.getId().equals(id));
     }
 
     @Override
     public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id)).findFirst().orElse(null));
+        return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equals(id)).findFirst().orElse(null));
     }
 
 }
