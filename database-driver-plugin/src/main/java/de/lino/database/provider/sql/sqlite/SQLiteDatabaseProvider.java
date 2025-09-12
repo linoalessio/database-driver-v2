@@ -32,12 +32,7 @@ import de.lino.database.provider.sql.SQLExecution;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * SQLiteDatabaseProvider not recommended to use since it stores its data in a local sql '.db' file
- * No interoperability possible, only recommended for sql testing, performance is low
- */
 @Getter
-@Deprecated
 public class SQLiteDatabaseProvider extends SQLDatabaseProvider {
 
     public SQLiteDatabaseProvider(@NotNull Credentials credentials) {
