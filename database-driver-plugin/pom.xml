@@ -18,10 +18,17 @@
     </properties>
 
     <repositories>
+
         <repository>
             <id>mariadb</id>
             <url>https://mvnrepository.com/artifact/org.mariadb.jdbc/mariadb-java-client</url>
         </repository>
+
+        <repository>
+            <id>HikariCP</id>
+            <url>https://mvnrepository.com/artifact/com.zaxxer/HikariCP</url>
+        </repository>
+
     </repositories>
 
     <dependencies>
@@ -36,7 +43,7 @@
         <dependency>
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
-            <version>5.0.0</version>
+            <version>7.0.2</version>
             <scope>compile</scope>
         </dependency>
 
