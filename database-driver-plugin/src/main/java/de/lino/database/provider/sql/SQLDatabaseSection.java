@@ -26,6 +26,7 @@ package de.lino.database.provider.sql;
  */
 
 import com.google.common.collect.Lists;
+import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.DatabaseType;
@@ -97,8 +98,11 @@ public class SQLDatabaseSection implements DatabaseSection {
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
         if (this.exists(databaseEntry.getId())) return;
+
         this.sqlExecution.executeUpdate("INSERT INTO " + this.name + " (id, data) VALUES (?, ?);", databaseEntry.getId(), databaseEntry.getDocument().toBytes());
         this.entries.add(databaseEntry);
+
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
     }
 
@@ -110,6 +114,8 @@ public class SQLDatabaseSection implements DatabaseSection {
         this.sqlExecution.executeUpdate("UPDATE " + this.name + " SET data = ? WHERE id = ?", databaseEntry.getDocument().toBytes(), databaseEntry.getId());
         this.entries.remove(databaseEntry);
         this.entries.add(databaseEntry);
+
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
     }
 

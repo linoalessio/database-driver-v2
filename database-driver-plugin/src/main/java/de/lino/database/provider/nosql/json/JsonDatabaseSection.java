@@ -26,6 +26,7 @@ package de.lino.database.provider.nosql.json;
  */
 
 import com.google.common.collect.Lists;
+import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.configuration.Credentials;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.json.file.FileProvider;
@@ -76,6 +77,8 @@ public class JsonDatabaseSection implements DatabaseSection {
         new JsonDocument().append("id", databaseEntry).append("data", databaseEntry.getMetaData()).write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
         this.entries.add(databaseEntry);
 
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
+
     }
 
     @Override
@@ -103,6 +106,7 @@ public class JsonDatabaseSection implements DatabaseSection {
         this.entries.remove(databaseEntry);
         this.entries.add(databaseEntry);
 
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
     }
 

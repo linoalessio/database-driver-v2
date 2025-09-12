@@ -29,6 +29,7 @@ import com.google.common.collect.Lists;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
+import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.entity.DatabaseEntry;
@@ -73,6 +74,8 @@ public class MongoDBDatabaseSection implements DatabaseSection {
         this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
         this.entries.add(databaseEntry);
 
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
+
     }
 
     @Override
@@ -85,6 +88,8 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
         this.entries.remove(databaseEntry);
         this.entries.add(databaseEntry);
+
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
     }
 

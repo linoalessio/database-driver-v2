@@ -34,6 +34,7 @@ import com.rethinkdb.model.MapObject;
 import com.rethinkdb.net.Connection;
 import com.rethinkdb.net.Result;
 import com.rethinkdb.utils.Types;
+import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.entity.DatabaseEntry;
@@ -82,8 +83,11 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
         if (this.exists(databaseEntry.getId())) return;
+
         this.table.insert(this.mapping(databaseEntry)).runNoReply(this.connection);
         this.entries.add(databaseEntry);
+
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
     }
 
@@ -95,6 +99,8 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
 
         this.entries.remove(databaseEntry);
         this.entries.add(databaseEntry);
+
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
     }
 

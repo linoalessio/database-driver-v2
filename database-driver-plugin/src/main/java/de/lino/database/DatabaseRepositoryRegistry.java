@@ -30,6 +30,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import de.lino.database.configuration.Credentials;
 import de.lino.database.file.DefaultFileProvider;
+import de.lino.database.json.JsonDocument;
 import de.lino.database.provider.DatabaseProvider;
 import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.DatabaseType;
@@ -53,14 +54,22 @@ import java.util.concurrent.atomic.AtomicReference;
 @Getter
 public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
+    private static boolean LOG_BYTES = false;
     private final Map<Integer, Pair<DatabaseType, DatabaseProvider>> databaseProviders;
 
-    public DatabaseRepositoryRegistry() {
+    public DatabaseRepositoryRegistry(boolean logBytes) {
 
         setInstance(this);
+        LOG_BYTES = logBytes;
+
         this.databaseProviders = Maps.newConcurrentMap();
         new DefaultFileProvider();
 
+    }
+
+    public static void logBytes(String message, JsonDocument document) {
+        if (!LOG_BYTES) return;
+        System.out.printf(String.format(message, document.toBytes().length));
     }
 
     @Override
