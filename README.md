@@ -49,7 +49,7 @@ Before working with the driver, you need to make sure that the Repository Instan
 All methods can be **executed asynchronously**, just add the suffix ***'Async'*** and a ***[CompletableFuture](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CompletableFuture.html)*** will be returned 
 ``` java
 // Initialize Repository instance
-new DefaultDatabaseRepository(); 
+new DatabaseRepositoryRegistry(); 
 ```
 
 *Working with the DatabaseRepository*
