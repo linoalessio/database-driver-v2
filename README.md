@@ -126,16 +126,9 @@ databaseSection.insert(entry)
 * The method returns an Optional<DatabaseEntry> for Error-Handling
 */
 final DatabaseEntry existingEntry = databaseSection.findEntryById("Lino").orElse(null);
-existingEntry.getMetaData().remove("age").append("country", "germany");
+final Pet dog = new Pet("Rocco", "Golden Retriever");
+existingEntry.getMetaData().remove("age").append("country", "germany").append("pet", dog);
 databaseSection.update(existingEntry);
-
-/*
-* If you want to add another document to the existing MetaData, just create a new Entry
-* But use the same id to modify the wanted entry
-*/
-final Pet dog = new Pet("Fluffy", "Golden Retriever");
-final DatabaseEntry modifiedMetaDataEntry = new DatabaseEntry("Lino", new JsonDocument().append("pet", dog));
-databaseSection.update(modifiedMetaDataEntry);
 
 // Delete an existing entry with the id
 databaseSection.delete(id);
