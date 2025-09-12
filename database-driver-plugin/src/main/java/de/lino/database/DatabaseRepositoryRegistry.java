@@ -51,11 +51,11 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Getter
-public class DefaultDatabaseRepository extends DatabaseRepository {
+public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
     private final Map<Integer, Pair<DatabaseType, DatabaseProvider>> databaseProviders;
 
-    public DefaultDatabaseRepository() {
+    public DatabaseRepositoryRegistry() {
 
         setInstance(this);
         this.databaseProviders = Maps.newConcurrentMap();
