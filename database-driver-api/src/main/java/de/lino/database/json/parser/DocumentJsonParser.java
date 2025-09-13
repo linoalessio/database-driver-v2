@@ -52,29 +52,36 @@ public final class DocumentJsonParser {
 
     @NotNull
     public static JsonElement parseReader(Reader reader) throws JsonSyntaxException {
-        try {
-            JsonReader jsonReader = new JsonReader(reader);
-            Throwable var2 = null;
 
-            JsonElement var4;
+        try {
+
+            final JsonReader jsonReader = new JsonReader(reader);
+            Throwable throwable = null;
+            JsonElement jsonElement;
+
             try {
-                JsonElement element = parseReader(jsonReader);
+
+                final JsonElement element = parseReader(jsonReader);
                 if (!element.isJsonNull() && jsonReader.peek() != JsonToken.END_DOCUMENT) {
                     throw new JsonSyntaxException("Did not consume the entire document.");
                 }
 
-                var4 = element;
-            } catch (Throwable var15) {
-                var2 = var15;
-                throw var15;
+                jsonElement = element;
+            } catch (final Throwable exception) {
+                throwable = exception;
+                throw exception;
             } finally {
+
                 if (jsonReader != null) {
-                    if (var2 != null) {
+
+                    if (throwable != null) {
+
                         try {
                             jsonReader.close();
-                        } catch (Throwable var14) {
-                            var2.addSuppressed(var14);
+                        } catch (final Throwable exception) {
+                            throwable.addSuppressed(exception);
                         }
+
                     } else {
                         jsonReader.close();
                     }
@@ -82,11 +89,11 @@ public final class DocumentJsonParser {
 
             }
 
-            return var4;
+            return jsonElement;
         } catch (NumberFormatException | MalformedJsonException exception) {
             throw new JsonSyntaxException(exception);
-        } catch (IOException var) {
-            throw new JsonIOException(var);
+        } catch (IOException exception) {
+            throw new JsonIOException(exception);
         }
     }
 
@@ -106,5 +113,6 @@ public final class DocumentJsonParser {
 
         return element;
     }
+
 }
 

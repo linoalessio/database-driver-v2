@@ -35,14 +35,22 @@ public class DatabaseEntry {
     @Getter
     private final String id;
 
-    private final JsonDocument metaData;
+    private final JsonDocument document;
 
+    /**
+     * Contains the id and the MetaData
+     * @return JsonDocument
+     */
     public JsonDocument getDocument() {
-        return this.metaData;
+        return this.document;
     }
 
+    /**
+     * Contains the MetaData of the entry
+     * @return JsonDocument
+     */
     public JsonDocument getMetaData() {
-        return this.metaData.getMetaData("data");
+        return this.document.getMetaData("data");
     }
 
 }
