@@ -156,7 +156,7 @@ final List<DatabaseEntry> entries = databaseSection.getEntries();
     "age": 23, // age has been removed
     "country": "germany",
     "pet": {
-      "name": "Fluffy",
+      "name": "Rocco",
       "kind": "Golden Retriever"
     }
   }
