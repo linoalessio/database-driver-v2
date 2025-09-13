@@ -83,6 +83,9 @@ DatabaseRepository.getInstance().shutdown();
 // Get all registered databases
 final List<DatabaseProvider> providerPool = DatabaseRepository.getInstance().getDatabaseProviderPool();
 
+// Get all registered databases by type
+final List<DatabaseProvider> providerByTypePool = DatabaseRepository.getInstance().getDatabaseProviderPool(databaseType);
+
 /*
 * Convert all entries of a specific DatabaseProvider (sourceId) to another one (targetId)
 * Process will only succeed if both providers are running and the sections are created/cached
