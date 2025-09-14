@@ -27,6 +27,7 @@ package de.lino.database.provider.nosql.rethinkdb;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.rethinkdb.RethinkDB;
 import com.rethinkdb.gen.ast.Db;
 import com.rethinkdb.gen.ast.Table;
@@ -43,6 +44,7 @@ import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.List;
 import java.util.Map;
@@ -54,7 +56,7 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
 
     private final String name;
 
-    private final List<DatabaseEntry> entries;
+    private final Map<String, DatabaseEntry> entries;
 
     private final TypeReference<Map<String, String>> cache;
     private final Connection connection;
@@ -63,7 +65,7 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
     public RethinkDBDatabaseSection(@NotNull String name, @NotNull Connection connection, @NotNull Db db) {
 
         this.name = name;
-        this.entries = Lists.newCopyOnWriteArrayList();
+        this.entries = Maps.newConcurrentMap();
 
         this.connection = connection;
         this.cache = Types.mapOf(String.class, String.class);
@@ -75,7 +77,7 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
 
                 final Map<String, String> content = result.next();
                 if (!content.containsKey("data")) throw new NoSuchDataFound(content.get("id"));
-                this.entries.add(new DatabaseEntry(Objects.requireNonNull(content).get("id"), new JsonDocument(content.get("values"))));
+                this.entries.put(content.get("id"), new DatabaseEntry(Objects.requireNonNull(content).get("id"), new JsonDocument(content.get("values"))));
 
             }
 
@@ -89,7 +91,7 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
         if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         this.table.insert(this.mapping(databaseEntry)).runNoReply(this.connection);
-        this.entries.add(databaseEntry);
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -101,8 +103,8 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
         if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
         this.table.update(this.mapping(databaseEntry)).runNoReply(this.connection);
 
-        this.entries.remove(databaseEntry);
-        this.entries.add(databaseEntry);
+        this.entries.remove(databaseEntry.getId());
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -114,7 +116,7 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
         if (!this.exists(id)) throw new NoSuchEntryFound(id);
 
         this.table.filter(this.mapping(id)).delete().runNoReply(this.connection);
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equals(id));
+        this.entries.remove(id);
 
     }
 
@@ -131,12 +133,17 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
 
     @Override
     public boolean exists(@NotNull String id) {
-        return this.entries.stream().anyMatch(databaseEntity -> databaseEntity.getId().equals(id));
+        return this.entries.containsKey(id);
     }
 
     @Override
     public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equals(id)).findFirst().orElse(null));
+        return Optional.ofNullable(this.entries.get(id));
+    }
+
+    @Override
+    public @UnmodifiableView List<DatabaseEntry> getEntries() {
+        return Lists.newCopyOnWriteArrayList(this.entries.values());
     }
 
     private MapObject<Object, Object> mapping(@NotNull String id) {

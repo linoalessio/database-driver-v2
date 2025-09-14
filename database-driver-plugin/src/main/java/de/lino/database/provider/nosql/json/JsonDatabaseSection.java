@@ -26,6 +26,7 @@ package de.lino.database.provider.nosql.json;
  */
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.configuration.Credentials;
 import de.lino.database.exception.EntryAlreadyInserted;
@@ -37,13 +38,11 @@ import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Getter
 public class JsonDatabaseSection implements DatabaseSection {
@@ -52,13 +51,13 @@ public class JsonDatabaseSection implements DatabaseSection {
     private final Credentials credentials;
 
     private final Path parent;
-    private final List<DatabaseEntry> entries;
+    private final Map<String, DatabaseEntry> entries;
 
     public JsonDatabaseSection(@NotNull String name, @NotNull Credentials credentials) {
 
         this.name = name;
         this.credentials = credentials;
-        this.entries = Lists.newCopyOnWriteArrayList();
+        this.entries = Maps.newConcurrentMap();
         this.parent = Paths.get(credentials.getFileRepository(), name);
 
         FileProvider.getInstance().createDirectory(this.parent);
@@ -69,7 +68,7 @@ public class JsonDatabaseSection implements DatabaseSection {
 
             if (!document.contains("data")) throw new NoSuchDataFound(id);
 
-            this.entries.add(new DatabaseEntry(id, document));
+            this.entries.put(id, new DatabaseEntry(id, document));
 
         });
 
@@ -81,7 +80,7 @@ public class JsonDatabaseSection implements DatabaseSection {
         if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         new JsonDocument().append("id", databaseEntry).append("data", databaseEntry.getMetaData()).write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
-        this.entries.add(databaseEntry);
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -109,8 +108,8 @@ public class JsonDatabaseSection implements DatabaseSection {
                 .append("data", data)
                 .write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
 
-        this.entries.removeIf(entry -> entry.getId().equals(databaseEntry.getId()));
-        this.entries.add(databaseEntry);
+        this.entries.remove(databaseEntry.getId());
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -122,7 +121,7 @@ public class JsonDatabaseSection implements DatabaseSection {
         if (!this.exists(id)) throw new NoSuchEntryFound(id);
 
         FileProvider.getInstance().deleteFile(Paths.get(this.parent.toString(), id + ".json"));
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id));
+        this.entries.remove(id);
 
     }
 
@@ -139,12 +138,17 @@ public class JsonDatabaseSection implements DatabaseSection {
 
     @Override
     public boolean exists(@NotNull String id) {
-        return this.entries.stream().anyMatch(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id));
+        return this.entries.containsKey(id);
     }
 
     @Override
     public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id)).findFirst().orElse(null));
+        return Optional.ofNullable(this.entries.get(id));
+    }
+
+    @Override
+    public @UnmodifiableView List<DatabaseEntry> getEntries() {
+        return Lists.newCopyOnWriteArrayList(this.entries.values());
     }
 
 }
