@@ -26,6 +26,7 @@ package de.lino.database.provider.nosql.redis;
  */
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.exception.EntryAlreadyInserted;
 import de.lino.database.exception.NoSuchDataFound;
@@ -35,11 +36,13 @@ import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.resps.ScanResult;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class RedisDatabaseSection implements DatabaseSection {
@@ -50,13 +53,13 @@ public class RedisDatabaseSection implements DatabaseSection {
     private final String name;
 
     @Getter
-    private final List<DatabaseEntry> entries;
+    private final Map<String, DatabaseEntry> entries;
 
     public RedisDatabaseSection(final Jedis jedis, final String name) {
 
         this.name = name;
         this.jedis = jedis;
-        this.entries = Lists.newCopyOnWriteArrayList();
+        this.entries = Maps.newConcurrentMap();
 
         String cursor = "0";
         final ScanParams scanParams = new ScanParams().match(name + ":*").count(100);
@@ -71,7 +74,7 @@ public class RedisDatabaseSection implements DatabaseSection {
                 if (data == null) throw new NoSuchDataFound(key);
 
                 final DatabaseEntry databaseEntry = new DatabaseEntry(key.replace(this.name + ":", ""), new JsonDocument(data));
-                this.entries.add(databaseEntry);
+                this.entries.put(databaseEntry.getId(), databaseEntry);
 
             }
 
@@ -89,7 +92,7 @@ public class RedisDatabaseSection implements DatabaseSection {
         final String key = this.name + ":" + databaseEntry.getId();
 
         this.jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getDocument()).toBytes());
-        this.entries.add(databaseEntry);
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -103,8 +106,8 @@ public class RedisDatabaseSection implements DatabaseSection {
         final String key = this.name + ":" + databaseEntry.getId();
         this.jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
 
-        this.entries.removeIf(entry -> entry.getId().equals(databaseEntry.getId()));
-        this.entries.add(databaseEntry);
+        this.entries.remove(databaseEntry.getId());
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -117,7 +120,7 @@ public class RedisDatabaseSection implements DatabaseSection {
 
         final String key = this.name + ":" + id;
         this.jedis.del(key.getBytes());
-        this.entries.removeIf(databaseEntry -> databaseEntry.getId().equals(id));
+        this.entries.remove(id);
 
     }
 
@@ -129,18 +132,23 @@ public class RedisDatabaseSection implements DatabaseSection {
     @Override
     public void clear() {
 
-        for (DatabaseEntry entry : this.entries) this.delete(entry.getId());
+        for (String id : this.entries.keySet()) this.delete(id);
 
     }
 
     @Override
     public boolean exists(@NotNull String id) {
-        return this.entries.stream().anyMatch(databaseEntry -> databaseEntry.getId().equals(id));
+        return this.entries.containsKey(id);
     }
 
     @Override
     public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.stream().filter(databaseEntry -> databaseEntry.getId().equals(id)).findFirst().orElse(null));
+        return Optional.ofNullable(this.entries.get(id));
+    }
+
+    @Override
+    public @UnmodifiableView List<DatabaseEntry> getEntries() {
+        return Lists.newCopyOnWriteArrayList(this.entries.values());
     }
 
 }

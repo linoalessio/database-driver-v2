@@ -26,6 +26,7 @@ package de.lino.database.provider.sql;
  */
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.exception.EntryAlreadyInserted;
 import de.lino.database.exception.NoSuchDataFound;
@@ -37,12 +38,14 @@ import de.lino.database.provider.entity.DatabaseEntry;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Getter
@@ -51,14 +54,14 @@ public class SQLDatabaseSection implements DatabaseSection {
     private final String name;
     private final SQLExecution sqlExecution;
 
-    private final List<DatabaseEntry> entries;
+    private final Map<String, DatabaseEntry> entries;
 
     @SneakyThrows
     public SQLDatabaseSection(@NotNull DatabaseType databaseType, @NotNull String name, @NotNull SQLExecution sqlExecution) {
 
         this.name = name;
         this.sqlExecution = sqlExecution;
-        this.entries = Lists.newCopyOnWriteArrayList();
+        this.entries = Maps.newConcurrentMap();
 
         String sqlStatement = "";
         switch (databaseType) {
@@ -84,7 +87,7 @@ public class SQLDatabaseSection implements DatabaseSection {
 
                     try (final InputStream inputStream = new ByteArrayInputStream(data)) {
                         JsonDocument jsonDocument = new JsonDocument(inputStream);
-                        this.entries.add(new DatabaseEntry(id, jsonDocument));
+                        this.entries.put(id, new DatabaseEntry(id, jsonDocument));
                     } catch (final IOException exception) {
                         exception.printStackTrace();
                     }
@@ -106,7 +109,7 @@ public class SQLDatabaseSection implements DatabaseSection {
         if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         this.sqlExecution.executeUpdate("INSERT INTO " + this.name + " (id, data) VALUES (?, ?);", databaseEntry.getId(), databaseEntry.getDocument().toBytes());
-        this.entries.add(databaseEntry);
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -118,8 +121,8 @@ public class SQLDatabaseSection implements DatabaseSection {
         if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
 
         this.sqlExecution.executeUpdate("UPDATE " + this.name + " SET data = ? WHERE id = ?", databaseEntry.getDocument().toBytes(), databaseEntry.getId());
-        this.entries.removeIf(entry -> entry.getId().equals(databaseEntry.getId()));
-        this.entries.add(databaseEntry);
+        this.entries.remove(databaseEntry.getId());
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -131,7 +134,7 @@ public class SQLDatabaseSection implements DatabaseSection {
         if (!this.exists(id)) throw new NoSuchEntryFound(id);
 
         this.sqlExecution.executeUpdate("DELETE FROM " + this.name + " WHERE id = ?", id);
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equals(id));
+        this.entries.remove(id);
 
     }
 
@@ -148,12 +151,17 @@ public class SQLDatabaseSection implements DatabaseSection {
 
     @Override
     public boolean exists(@NotNull String id) {
-        return this.entries.stream().anyMatch(databaseEntity -> databaseEntity.getId().equals(id));
+        return this.entries.containsKey(id);
     }
 
     @Override
     public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equals(id)).findFirst().orElse(null));
+        return Optional.ofNullable(this.entries.get(id));
+    }
+
+    @Override
+    public @UnmodifiableView List<DatabaseEntry> getEntries() {
+        return Lists.newCopyOnWriteArrayList(this.entries.values());
     }
 
 }

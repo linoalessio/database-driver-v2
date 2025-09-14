@@ -26,6 +26,7 @@ package de.lino.database.provider.nosql.mongodb;
  */
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
@@ -39,22 +40,24 @@ import de.lino.database.provider.entity.DatabaseEntry;
 import lombok.Getter;
 import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Getter
 public class MongoDBDatabaseSection implements DatabaseSection {
 
     private final String name;
-    private final List<DatabaseEntry> entries;
+    private final Map<String, DatabaseEntry> entries;
 
     private final MongoCollection<Document> collection;
 
     public MongoDBDatabaseSection(@NotNull MongoDatabase mongoDatabase, @NotNull String name) {
 
         this.name = name;
-        this.entries = Lists.newCopyOnWriteArrayList();
+        this.entries = Maps.newConcurrentMap();
         this.collection = mongoDatabase.getCollection(name);
 
         for (Document document : this.collection.find()) {
@@ -62,7 +65,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
             if (!document.containsKey("data")) throw new NoSuchDataFound(document.getString("id"));
 
             final JsonDocument jsonDocument = new JsonDocument(document.toJson());
-            this.entries.add(new DatabaseEntry(document.getString("id"), new JsonDocument("data", jsonDocument.getMetaData("data"))));
+            this.entries.put(document.getString("id"), new DatabaseEntry(document.getString("id"), new JsonDocument("data", jsonDocument.getMetaData("data"))));
 
         }
 
@@ -75,7 +78,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
         final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getDocument()).toJson();
         this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
-        this.entries.add(databaseEntry);
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -89,8 +92,8 @@ public class MongoDBDatabaseSection implements DatabaseSection {
         final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData()).toJson();
         this.collection.updateOne(Filters.eq("id", databaseEntry.getId()), new Document("$set", new JsonDocument().getGson().fromJson(json, Document.class)));
 
-        this.entries.removeIf(entry -> entry.getId().equals(databaseEntry.getId()));
-        this.entries.add(databaseEntry);
+        this.entries.remove(databaseEntry.getId());
+        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -104,7 +107,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
         if (this.collection.deleteOne(Filters.eq("id", id)).getDeletedCount() > 0) return;
 
         this.collection.deleteOne(Filters.eq("id", id));
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equals(id));
+        this.entries.remove(id);
 
     }
 
@@ -121,12 +124,17 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
     @Override
     public boolean exists(@NotNull String id) {
-        return this.entries.stream().anyMatch(databaseEntry -> databaseEntry.getId().equals(id));
+        return this.entries.containsKey(id);
     }
 
     @Override
     public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equals(id)).findFirst().orElse(null));
+        return Optional.ofNullable(this.entries.get(id));
+    }
+
+    @Override
+    public @UnmodifiableView List<DatabaseEntry> getEntries() {
+        return Lists.newCopyOnWriteArrayList(this.entries.values());
     }
 
 }
