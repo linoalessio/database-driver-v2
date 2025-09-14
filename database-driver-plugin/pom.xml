@@ -20,11 +20,6 @@
     <repositories>
 
         <repository>
-            <id>mariadb</id>
-            <url>https://mvnrepository.com/artifact/org.mariadb.jdbc/mariadb-java-client</url>
-        </repository>
-
-        <repository>
             <id>HikariCP</id>
             <url>https://mvnrepository.com/artifact/com.zaxxer/HikariCP</url>
         </repository>
@@ -36,7 +31,7 @@
         <dependency>
             <groupId>de.lino.database</groupId>
             <artifactId>database-driver-api</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <version>1.1</version>
             <scope>compile</scope>
         </dependency>
 

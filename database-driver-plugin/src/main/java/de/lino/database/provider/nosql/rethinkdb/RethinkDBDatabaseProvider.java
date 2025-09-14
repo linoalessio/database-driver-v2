@@ -40,6 +40,7 @@ import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Getter
 public class RethinkDBDatabaseProvider implements DatabaseProvider {
@@ -104,8 +105,8 @@ public class RethinkDBDatabaseProvider implements DatabaseProvider {
     }
 
     @Override
-    public DatabaseSection getSection(@NotNull String name) {
-        return this.databaseSections.get(name);
+    public Optional<DatabaseSection> getSection(@NotNull String name) {
+        return Optional.ofNullable(this.databaseSections.get(name));
     }
 
     @Override
