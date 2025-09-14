@@ -29,6 +29,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 public interface DatabaseProvider {
@@ -74,7 +75,7 @@ public interface DatabaseProvider {
      * @param name: section name
      * @return DatabaseSection
      */
-    DatabaseSection getSection(@NotNull String name);
+    Optional<DatabaseSection> getSection(@NotNull String name);
 
     /**
      * Remove all sections from the provider
@@ -125,7 +126,7 @@ public interface DatabaseProvider {
      * Execute get section process async
      * @return CompletableFuture, type DatabaseSection
      */
-    default CompletableFuture<DatabaseSection> getSectionAsync(@NotNull String name) {
+    default CompletableFuture<Optional<DatabaseSection>> getSectionAsync(@NotNull String name) {
         return CompletableFuture.supplyAsync(() -> getSection(name));
     }
 

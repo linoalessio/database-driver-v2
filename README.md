@@ -111,8 +111,11 @@ databaseProvider.deleteSection(name);
 // Check whether a section exists
 final boolean running = databaseProvider.exists(name);
 
-// Get a specific section from the cache
-final DatabaseSection cachedSection = databaseProvider.getSection(name);
+/*
+* Get a specific section from the cache
+* Returns an Optional<DatabaseSection>
+*/
+final DatabaseSection cachedSection = databaseProvider.getSection(name).orElseThrow();
 
 // Get all registered sections
 final List<DatabaseSection> sectionPool = databaseProvider.getSections();

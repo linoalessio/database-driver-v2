@@ -35,10 +35,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
 
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 public class JsonDatabaseProvider implements DatabaseProvider {
 
@@ -93,8 +90,8 @@ public class JsonDatabaseProvider implements DatabaseProvider {
     }
 
     @Override
-    public DatabaseSection getSection(@NotNull String name) {
-        return this.databaseSections.get(name);
+    public Optional<DatabaseSection> getSection(@NotNull String name) {
+        return Optional.ofNullable(this.databaseSections.get(name));
     }
 
     @Override

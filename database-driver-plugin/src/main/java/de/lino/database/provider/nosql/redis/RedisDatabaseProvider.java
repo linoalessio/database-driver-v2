@@ -40,6 +40,7 @@ import redis.clients.jedis.resps.ScanResult;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class RedisDatabaseProvider implements DatabaseProvider {
 
@@ -126,8 +127,8 @@ public class RedisDatabaseProvider implements DatabaseProvider {
     }
 
     @Override
-    public DatabaseSection getSection(@NotNull String name) {
-        return this.databaseSections.get(name);
+    public Optional<DatabaseSection> getSection(@NotNull String name) {
+        return Optional.ofNullable(this.databaseSections.get(name));
     }
 
     @Override
