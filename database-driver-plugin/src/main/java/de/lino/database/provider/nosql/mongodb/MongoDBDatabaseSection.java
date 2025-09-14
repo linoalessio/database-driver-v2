@@ -30,6 +30,9 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import de.lino.database.DatabaseRepositoryRegistry;
+import de.lino.database.exception.EntryAlreadyInserted;
+import de.lino.database.exception.NoSuchDataFound;
+import de.lino.database.exception.NoSuchEntryFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.entity.DatabaseEntry;
@@ -56,7 +59,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
         for (Document document : this.collection.find()) {
 
-            if (!document.containsKey("data")) throw new RuntimeException("No meta data found in document");
+            if (!document.containsKey("data")) throw new NoSuchDataFound(document.getString("id"));
 
             final JsonDocument jsonDocument = new JsonDocument(document.toJson());
             this.entries.add(new DatabaseEntry(document.getString("id"), new JsonDocument("data", jsonDocument.getMetaData("data"))));
@@ -68,7 +71,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     @Override
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(databaseEntry.getId())) return;
+        if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getDocument()).toJson();
         this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
@@ -81,12 +84,12 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     @Override
     public void update(@NotNull DatabaseEntry databaseEntry) {
 
-        if (!this.exists(databaseEntry.getId())) return;
+        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
 
         final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData()).toJson();
         this.collection.updateOne(Filters.eq("id", databaseEntry.getId()), new Document("$set", new JsonDocument().getGson().fromJson(json, Document.class)));
 
-        this.entries.remove(databaseEntry);
+        this.entries.removeIf(entry -> entry.getId().equals(databaseEntry.getId()));
         this.entries.add(databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
@@ -96,7 +99,8 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     @Override
     public void delete(@NotNull String id) {
 
-        if (!this.exists(id)) return;
+        if (!this.exists(id)) throw new NoSuchEntryFound(id);
+
         if (this.collection.deleteOne(Filters.eq("id", id)).getDeletedCount() > 0) return;
 
         this.collection.deleteOne(Filters.eq("id", id));

@@ -27,6 +27,9 @@ package de.lino.database.provider.sql;
 
 import com.google.common.collect.Lists;
 import de.lino.database.DatabaseRepositoryRegistry;
+import de.lino.database.exception.EntryAlreadyInserted;
+import de.lino.database.exception.NoSuchDataFound;
+import de.lino.database.exception.NoSuchEntryFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.DatabaseType;
@@ -62,7 +65,8 @@ public class SQLDatabaseSection implements DatabaseSection {
 
             case POSTGRE_SQL -> sqlStatement = "BYTEA";
             case MY_SQL, MARIA_DB ->  sqlStatement = "LONGBLOB";
-            case SQLITE, H2_DB ->  sqlStatement = "BLOB";
+            case SQLITE, H2_DB, ORACLE, APACHE_DERBY ->  sqlStatement = "BLOB";
+            case MICROSOFT_SQL_SERVER ->  sqlStatement = "VARBINARY(MAX)";
 
         }
 
@@ -75,6 +79,8 @@ public class SQLDatabaseSection implements DatabaseSection {
 
                     final String id = resultSet.getString("id");
                     final byte[] data = resultSet.getBytes("data");
+
+                    if (data == null) throw new NoSuchDataFound(id);
 
                     try (final InputStream inputStream = new ByteArrayInputStream(data)) {
                         JsonDocument jsonDocument = new JsonDocument(inputStream);
@@ -97,7 +103,7 @@ public class SQLDatabaseSection implements DatabaseSection {
     @Override
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(databaseEntry.getId())) return;
+        if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         this.sqlExecution.executeUpdate("INSERT INTO " + this.name + " (id, data) VALUES (?, ?);", databaseEntry.getId(), databaseEntry.getDocument().toBytes());
         this.entries.add(databaseEntry);
@@ -109,10 +115,10 @@ public class SQLDatabaseSection implements DatabaseSection {
     @Override
     public void update(@NotNull DatabaseEntry databaseEntry) {
 
-        if (!this.exists(databaseEntry.getId())) return;
+        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
 
         this.sqlExecution.executeUpdate("UPDATE " + this.name + " SET data = ? WHERE id = ?", databaseEntry.getDocument().toBytes(), databaseEntry.getId());
-        this.entries.remove(databaseEntry);
+        this.entries.removeIf(entry -> entry.getId().equals(databaseEntry.getId()));
         this.entries.add(databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
@@ -122,7 +128,7 @@ public class SQLDatabaseSection implements DatabaseSection {
     @Override
     public void delete(@NotNull String id) {
 
-        if (!this.exists(id)) return;
+        if (!this.exists(id)) throw new NoSuchEntryFound(id);
 
         this.sqlExecution.executeUpdate("DELETE FROM " + this.name + " WHERE id = ?", id);
         this.entries.removeIf(databaseEntity -> databaseEntity.getId().equals(id));

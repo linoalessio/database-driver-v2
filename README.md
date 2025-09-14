@@ -4,16 +4,20 @@
 
 The DatabaseDriver is a management system for multiple database types, which can be managed via one interface.
 
-| Database   | Usage                                                                                                        |
-|------------|--------------------------------------------------------------------------------------------------------------|
-| MySQL      | Widely used for web applications, content management systems (e.g., WordPress), and general relational data storage.|
-| MariaDB    | Drop-in replacement for MySQL with improved performance, security features, and enterprise support; used in web and cloud applications.|
-| PostgreSQL | Advanced relational database for complex queries, analytics, GIS (geospatial data), and enterprise applications needing strong standards compliance.|
-| SQLite     | File-based, serverless database often used in mobile apps, embedded systems, small desktop tools, and prototyping. |
-| H2DB       | Lightweight, in-memory or embedded database mainly for development, testing, or small applications where fast setup is needed. |
-| MongoDB    | Document-oriented NoSQL database, great for handling flexible, semi-structured data (e.g., JSON), often used in scalable web and cloud apps. |
-| RethinkDB  | Real-time NoSQL database optimized for apps requiring live updates and push notifications (e.g., chat apps, dashboards). |
-| JsonFileDB | Very simple storage solution using JSON files; suitable for small projects, configs, or prototyping without the overhead of a full database server. |
+| Database             | Usage                                                                                                        |
+|----------------------|--------------------------------------------------------------------------------------------------------------|
+| MySQL                | Widely used for web applications, content management systems (e.g., WordPress), and general relational data storage.|
+| MariaDB              | Drop-in replacement for MySQL with improved performance, security features, and enterprise support; used in web and cloud applications.|
+| PostgreSQL           | Advanced relational database for complex queries, analytics, GIS (geospatial data), and enterprise applications needing strong standards compliance.|
+| SQLite               | File-based, serverless database often used in mobile apps, embedded systems, small desktop tools, and prototyping. |
+| H2DB                 | Lightweight, in-memory or embedded database mainly for development, testing, or small applications where fast setup is needed. |
+| Apache Oracle        | Derby runs in-process (embedded), so it’s ideal for small apps or unit tests. Not recommended for high-traffic production. |
+| Microsoft SQL Server | Strong integration with Microsoft ecosystem. Scales well for medium to large enterprise apps. |
+| Oracle Database      | Designed for high concurrency, reliability, and large datasets. Often used in industries that need high availability and complex transactions. |
+| MongoDB              | Document-oriented NoSQL database, great for handling flexible, semi-structured data (e.g., JSON), often used in scalable web and cloud apps. |
+| RethinkDB            | Real-time NoSQL database optimized for apps requiring live updates and push notifications (e.g., chat apps, dashboards). |
+| JsonFileDB           | Very simple storage solution using JSON files; suitable for small projects, configs, or prototyping without the overhead of a full database server. |
+| Redis                | Redis is an open-source, in-memory data store used worldwide for high-speed data storage and retrieval. It powers applications as a cache, database, and message broker, enabling real-time analytics, fast session management, and scalable messaging systems. |
 
 To add the DatabaseDriver dependency using maven (replace `%version%` with the latest version shown in the badge above):
 
@@ -49,7 +53,7 @@ Before working with the driver, you need to make sure that the Repository Instan
 All methods can be **executed asynchronously**, just add the suffix ***'Async'*** and a ***[CompletableFuture](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CompletableFuture.html)*** will be returned 
 ``` java
 // Initialize Repository instance
-new DatabaseRepositoryRegistry(); 
+new DatabaseRepositoryRegistry(boolean=logBytes); 
 ```
 
 *Working with the DatabaseRepository*
@@ -60,9 +64,9 @@ new DatabaseRepositoryRegistry();
 * Register a DatabaseProvider with an id (int), databaseType and the given credentials
 * The method returns a DatabaseProvider.class
 *
-* DatabaseType: MY_SQL, POSTGRE_SQL, H2_DB, MARIA_DB, SQLITE, MONGO_DB, RETHINK_DB, JSON
+* DatabaseType SQL: MY_SQL, POSTGRE_SQL, H2_DB, MARIA_DB, SQLITE, ORACLE, MICROSOFT_SQL_SERVER, APACHE_DERBY
+* DatabaseType NoSQL: MONGO_DB, RETHINK_DB, JSON, REDIS
 */
-final Credentials credentials = new Credentials(Paths.get("config/sample-database.json"), "localhost" , "userName" , "password", port , "database");
 final DatabaseProvider databaseProvider = DatabaseRepository.getInstance().registerDatabaseProvider(id, databaseType, credentials);
 
 /*
@@ -171,9 +175,13 @@ final Credentials mariadb = new Credentials(Paths.get("CONFIG_PATH"), "address",
 final Credentials postgreSQL = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
 final Credentials sqlite = new Credentials(Paths.get("CONFIG_PATH"), Paths.get("DATABASE_NAME" + ".db"));
 final Credentials h2db = new Credentials(Paths.get("CONFIG_PATH"), Paths.get("DATABASE_REPOSITORY_PATH"));
+final Credentials apacheDerby = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
+final Credentials oracle = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
+final Credentials microsoftServer = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
 
 // NoSQL
 final Credentials mongodb = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
 final Credentials rethinkDB = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
+final Credentials redis = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
 final Credentials json = new Credentials(Paths.get("CONFIG_PATH"), Paths.get("DATABASE_REPOSITORY_PATH"));
 ```
