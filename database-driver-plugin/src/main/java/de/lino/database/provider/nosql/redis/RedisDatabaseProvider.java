@@ -1,9 +1,9 @@
-package de.lino.database.provider.sql;
+package de.lino.database.provider.nosql.redis;
 
 /*
  * MIT License
  *
- * Copyright (c) lino, 08.09.2025
+ * Copyright (c) lino, 14.09.2025
  * Copyright (c) contributors
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,53 +27,60 @@ package de.lino.database.provider.sql;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import de.lino.database.configuration.Credentials;
 import de.lino.database.provider.DatabaseProvider;
 import de.lino.database.provider.DatabaseSection;
-import de.lino.database.provider.DatabaseType;
-import lombok.SneakyThrows;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
+import redis.clients.jedis.params.ScanParams;
+import redis.clients.jedis.resps.ScanResult;
 
-import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 
-public class SQLDatabaseProvider implements DatabaseProvider {
+public class RedisDatabaseProvider implements DatabaseProvider {
 
-    private final DatabaseType databaseType;
-    private final SQLExecution sqlExecution;
+    private final JedisPool jedisPool;
     private final Map<String, DatabaseSection> databaseSections;
 
-    @SneakyThrows
-    public SQLDatabaseProvider(@NotNull DatabaseType databaseType, @NotNull SQLExecution sqlExecution) {
+    public RedisDatabaseProvider(@NotNull Credentials credentials) {
 
-        this.databaseType = databaseType;
-        this.sqlExecution = sqlExecution;
         this.databaseSections = Maps.newConcurrentMap();
 
-        String tablePattern = getPattern(databaseType);
+        final JedisPoolConfig jedisPoolConfig = new JedisPoolConfig();
+        jedisPoolConfig.setMaxTotal(50);
+        jedisPoolConfig.setMaxIdle(10);
+        jedisPoolConfig.setMinIdle(2);
+        jedisPoolConfig.setTestOnBorrow(true);
 
-        this.sqlExecution.executeQueryAsync(tablePattern, resultSet -> {
+        if (credentials.getUserName().isEmpty() && credentials.getPassword().isEmpty()) {
+            this.jedisPool = new JedisPool(jedisPoolConfig, credentials.getAddress(), credentials.getPort());
+            this.jedisPool.getResource().select(Integer.parseInt(credentials.getDatabase()));
+        } else {
+            this.jedisPool = new JedisPool(jedisPoolConfig, "redis://:" + credentials.getPassword() + "@" + credentials.getAddress() + ":" + credentials.getPort() + "/" + credentials.getDatabase());
+        }
 
-            try {
+        String cursor = "0";
+        final ScanParams scanParams = new ScanParams().match("*").count(100);
 
-                while (resultSet.next()) {
-                    String tableName = resultSet.getString("TABLE_NAME");
-                    this.databaseSections.put(tableName, new SQLDatabaseSection(databaseType, tableName, this.sqlExecution));
-                }
+        do {
 
-            } catch (final SQLException exception) {
-                exception.printStackTrace();
-            }
+            final ScanResult<String> result = this.jedisPool.getResource().scan(cursor, scanParams);
+            for (String key : result.getResult())
+                this.databaseSections.put(key, new RedisDatabaseSection(this.jedisPool.getResource(), key));
 
-            return true;
-        }, true).get();
+            cursor = result.getCursor();
+
+        } while (!cursor.equals("0"));
 
     }
 
     @Override
     public void shutdown() {
-        this.sqlExecution.shutdown();
+        this.jedisPool.close();
         this.databaseSections.clear();
     }
 
@@ -82,7 +89,7 @@ public class SQLDatabaseProvider implements DatabaseProvider {
 
         if (this.databaseSections.containsKey(name)) return this.databaseSections.get(name);
 
-        final DatabaseSection databaseSection = new SQLDatabaseSection(this.databaseType, name, this.sqlExecution);
+        final DatabaseSection databaseSection = new RedisDatabaseSection(this.jedisPool.getResource(), name);
         this.databaseSections.put(name, databaseSection);
 
         return databaseSection;
@@ -90,8 +97,22 @@ public class SQLDatabaseProvider implements DatabaseProvider {
 
     @Override
     public void deleteSection(@NotNull String name) {
-        this.sqlExecution.executeUpdate("DROP TABLE " + name);
-        this.databaseSections.remove(name);
+
+        try (final Jedis jedis = this.jedisPool.getResource()) {
+
+            String cursor = "0";
+            final ScanParams scanParams = new ScanParams().match(name + "*").count(100);
+
+            do {
+
+                final ScanResult<String> result = jedis.scan(cursor, scanParams);
+                for (String key : result.getResult()) jedis.del(key);
+                cursor = result.getCursor();
+
+            } while (!cursor.equals("0"));
+
+            this.databaseSections.remove(name);
+        }
     }
 
     @Override
@@ -113,22 +134,6 @@ public class SQLDatabaseProvider implements DatabaseProvider {
     public void clear() {
         for (DatabaseSection databaseSection : this.getSections()) databaseSection.clear();
         this.databaseSections.clear();
-    }
-
-    private static @NotNull String getPattern(@NotNull DatabaseType databaseType) {
-
-        String tablePattern;
-
-        switch (databaseType) {
-
-            case SQLITE -> tablePattern = "SELECT name AS TABLE_NAME FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';";
-            case APACHE_DERBY -> tablePattern = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='App' AND TABLE_NAME NOT LIKE 'sqlite_%';";
-            case MICROSOFT_SQL_SERVER -> tablePattern = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo'";
-            case ORACLE -> tablePattern = "SELECT table_name AS TABLE_NAME FROM all_tables WHERE owner='SCHEMA_NAME'";
-            default -> tablePattern = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='PUBLIC'";
-
-        }
-        return tablePattern;
     }
 
 }

@@ -86,7 +86,9 @@ public class SQLExecution {
 
     public <T> T executeQuery(@NotNull String query, Function<ResultSet, T> function, @NotNull T defaultValue, @NonNls Object... objects) {
 
+
         try (Connection connection = this.hikariDataSource.getConnection(); PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+
             int i = 1;
             for (Object object : objects) {
                 if (object instanceof byte[]) preparedStatement.setBytes(i++, (byte[]) object);
@@ -118,6 +120,11 @@ public class SQLExecution {
 
         final HikariConfig hikariConfig = new HikariConfig();
 
+        hikariConfig.setMaximumPoolSize(10);
+        hikariConfig.setMinimumIdle(5);
+        hikariConfig.setConnectionTimeout(30000);
+        hikariConfig.setMaxLifetime(1800000);
+
         switch (databaseType) {
 
             case MY_SQL, POSTGRE_SQL, MARIA_DB, MONGO_DB, RETHINK_DB -> {
@@ -135,8 +142,26 @@ public class SQLExecution {
             case H2_DB -> {
                 hikariConfig.setJdbcUrl("jdbc:h2:./" + credentials.getFileRepository());
                 hikariConfig.setDriverClassName(databaseType.getDriverClass());
-                hikariConfig.setUsername("sa");
-                hikariConfig.setPassword("");
+                hikariConfig.setUsername(credentials.getUserName());
+                hikariConfig.setPassword(credentials.getPassword());
+            }
+            case ORACLE -> {
+                hikariConfig.setJdbcUrl("jdbc:" + databaseType.getType() + "://" + credentials.getAddress() + ":" + credentials.getPort() + "/" + credentials.getDatabase());
+                hikariConfig.setDriverClassName(databaseType.getDriverClass());
+                hikariConfig.setUsername(credentials.getUserName());
+                hikariConfig.setPassword(credentials.getPassword());
+            }
+            case MICROSOFT_SQL_SERVER -> {
+                hikariConfig.setJdbcUrl("jdbc:" + databaseType.getType() + "://" + credentials.getAddress() + ":" + credentials.getPort() + ";databaseName=" + credentials.getDatabase());
+                hikariConfig.setDriverClassName(databaseType.getDriverClass());
+                hikariConfig.setUsername(credentials.getUserName());
+                hikariConfig.setPassword(credentials.getPassword());
+            }
+            case APACHE_DERBY -> {
+                hikariConfig.setJdbcUrl("jdbc:" + databaseType.getType() + ":" + credentials.getDatabase() + ";create=true");
+                hikariConfig.setDriverClassName(databaseType.getDriverClass());
+                hikariConfig.setUsername(credentials.getUserName());
+                hikariConfig.setPassword(credentials.getPassword());
             }
 
         }

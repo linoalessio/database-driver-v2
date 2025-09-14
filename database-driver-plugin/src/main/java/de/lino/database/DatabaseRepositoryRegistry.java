@@ -36,9 +36,14 @@ import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.DatabaseType;
 import de.lino.database.provider.nosql.json.JsonDatabaseProvider;
 import de.lino.database.provider.nosql.mongodb.MongoDBDatabaseProvider;
+import de.lino.database.provider.nosql.redis.RedisDatabaseProvider;
+import de.lino.database.provider.nosql.rethinkdb.RethinkDBDatabaseProvider;
+import de.lino.database.provider.sql.derby.ApacheDerbyDatabaseProvider;
 import de.lino.database.provider.sql.h2db.H2DatabaseProvider;
 import de.lino.database.provider.sql.mariadb.MariaDBDatabaseProvider;
+import de.lino.database.provider.sql.microsoft.MicrosoftSQLServerDatabaseProvider;
 import de.lino.database.provider.sql.mysql.MySQLDatabaseProvider;
+import de.lino.database.provider.sql.orcale.OracleSQLDatabaseProvider;
 import de.lino.database.provider.sql.postgresql.PostgreSQLDatabaseProvider;
 import de.lino.database.provider.sql.sqlite.SQLiteDatabaseProvider;
 import de.lino.database.utils.Pair;
@@ -146,7 +151,11 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
             case POSTGRE_SQL -> databaseProviderAtomicReference.set(new PostgreSQLDatabaseProvider(credentials));
             case SQLITE -> databaseProviderAtomicReference.set(new SQLiteDatabaseProvider(credentials));
             case MARIA_DB -> databaseProviderAtomicReference.set(new MariaDBDatabaseProvider(credentials));
-            case RETHINK_DB -> databaseProviderAtomicReference.set(null);
+            case RETHINK_DB -> databaseProviderAtomicReference.set(new RethinkDBDatabaseProvider(credentials));
+            case ORACLE -> databaseProviderAtomicReference.set(new OracleSQLDatabaseProvider(credentials));
+            case MICROSOFT_SQL_SERVER -> databaseProviderAtomicReference.set(new MicrosoftSQLServerDatabaseProvider(credentials));
+            case APACHE_DERBY -> databaseProviderAtomicReference.set(new ApacheDerbyDatabaseProvider(credentials));
+            case REDIS -> databaseProviderAtomicReference.set(new RedisDatabaseProvider(credentials));
 
         }
 

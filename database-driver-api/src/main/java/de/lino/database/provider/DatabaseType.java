@@ -39,7 +39,11 @@ public enum DatabaseType {
     , RETHINK_DB("rethink", "com.rethinkdb.Driver")
     , JSON("json", "NULL")
     , MARIA_DB("mariadb", "org.mariadb.jdbc.Driver")
-    , SQLITE("sqlite", "org.sqlite.JDBC");
+    , SQLITE("sqlite", "org.sqlite.JDBC")
+    , ORACLE("oracle:thin", "oracle.jdbc.OracleDriver")
+    , MICROSOFT_SQL_SERVER("sqlserver", "com.microsoft.sqlserver.jdbc.SQLServerDriver")
+    , APACHE_DERBY("derby:memory", "org.apache.derby.jdbc.EmbeddedDriver")
+    , REDIS("redis", "com.redis.Driver");
 
     private final String type, driverClass;
 

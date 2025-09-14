@@ -28,6 +28,9 @@ package de.lino.database.provider.nosql.json;
 import com.google.common.collect.Lists;
 import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.configuration.Credentials;
+import de.lino.database.exception.EntryAlreadyInserted;
+import de.lino.database.exception.NoSuchDataFound;
+import de.lino.database.exception.NoSuchEntryFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.json.file.FileProvider;
 import de.lino.database.provider.DatabaseSection;
@@ -63,6 +66,9 @@ public class JsonDatabaseSection implements DatabaseSection {
 
             final String id = path.getName().replace(".json", "");
             final JsonDocument document = JsonDocument.load(path.toPath());
+
+            if (!document.contains("data")) throw new NoSuchDataFound(id);
+
             this.entries.add(new DatabaseEntry(id, document));
 
         });
@@ -72,7 +78,7 @@ public class JsonDatabaseSection implements DatabaseSection {
     @Override
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(databaseEntry.getId())) return;
+        if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         new JsonDocument().append("id", databaseEntry).append("data", databaseEntry.getMetaData()).write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
         this.entries.add(databaseEntry);
@@ -84,7 +90,7 @@ public class JsonDatabaseSection implements DatabaseSection {
     @Override
     public void update(@NotNull DatabaseEntry databaseEntry) {
 
-        if (!this.exists(databaseEntry.getId())) return;
+        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
 
         if (databaseEntry.getDocument().contains("id")) {
 
@@ -103,7 +109,7 @@ public class JsonDatabaseSection implements DatabaseSection {
                 .append("data", data)
                 .write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
 
-        this.entries.remove(databaseEntry);
+        this.entries.removeIf(entry -> entry.getId().equals(databaseEntry.getId()));
         this.entries.add(databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
@@ -113,7 +119,7 @@ public class JsonDatabaseSection implements DatabaseSection {
     @Override
     public void delete(@NotNull String id) {
 
-        if (!this.exists(id)) return;
+        if (!this.exists(id)) throw new NoSuchEntryFound(id);
 
         FileProvider.getInstance().deleteFile(Paths.get(this.parent.toString(), id + ".json"));
         this.entries.removeIf(databaseEntity -> databaseEntity.getId().equalsIgnoreCase(id));

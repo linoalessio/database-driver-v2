@@ -1,9 +1,9 @@
-package de.lino.database.provider.nosql.rethinkdb;
+package de.lino.database.provider.nosql.redis;
 
 /*
  * MIT License
  *
- * Copyright (c) lino, 09.09.2025
+ * Copyright (c) lino, 14.09.2025
  * Copyright (c) contributors
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -25,15 +25,7 @@ package de.lino.database.provider.nosql.rethinkdb;
  * SOFTWARE.
  */
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.collect.Lists;
-import com.rethinkdb.RethinkDB;
-import com.rethinkdb.gen.ast.Db;
-import com.rethinkdb.gen.ast.Table;
-import com.rethinkdb.model.MapObject;
-import com.rethinkdb.net.Connection;
-import com.rethinkdb.net.Result;
-import com.rethinkdb.utils.Types;
 import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.exception.EntryAlreadyInserted;
 import de.lino.database.exception.NoSuchDataFound;
@@ -43,43 +35,49 @@ import de.lino.database.provider.DatabaseSection;
 import de.lino.database.provider.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.params.ScanParams;
+import redis.clients.jedis.resps.ScanResult;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 
-@Getter
-public class RethinkDBDatabaseSection implements DatabaseSection {
+public class RedisDatabaseSection implements DatabaseSection {
 
+    private final Jedis jedis;
+
+    @Getter
     private final String name;
 
+    @Getter
     private final List<DatabaseEntry> entries;
 
-    private final TypeReference<Map<String, String>> cache;
-    private final Connection connection;
-    private final Table table;
-
-    public RethinkDBDatabaseSection(@NotNull String name, @NotNull Connection connection, @NotNull Db db) {
+    public RedisDatabaseSection(final Jedis jedis, final String name) {
 
         this.name = name;
+        this.jedis = jedis;
         this.entries = Lists.newCopyOnWriteArrayList();
 
-        this.connection = connection;
-        this.cache = Types.mapOf(String.class, String.class);
-        this.table = db.table(name);
+        String cursor = "0";
+        final ScanParams scanParams = new ScanParams().match(name + ":*").count(100);
 
-        try (final Result<Map<String, String>> result = this.table.run(this.connection, this.cache)) {
+        do {
 
-            while (result.hasNext()) {
+            final ScanResult<String> result = jedis.scan(cursor, scanParams);
 
-                final Map<String, String> content = result.next();
-                if (!content.containsKey("data")) throw new NoSuchDataFound(content.get("id"));
-                this.entries.add(new DatabaseEntry(Objects.requireNonNull(content).get("id"), new JsonDocument(content.get("values"))));
+            for (String key : result.getResult()) {
+
+                final byte[] data = jedis.get(key.getBytes());
+                if (data == null) throw new NoSuchDataFound(key);
+
+                final DatabaseEntry databaseEntry = new DatabaseEntry(key.replace(this.name + ":", ""), new JsonDocument(data));
+                this.entries.add(databaseEntry);
 
             }
 
-        }
+            cursor = result.getCursor();
+
+        } while (!cursor.equals("0"));
 
     }
 
@@ -88,7 +86,9 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
 
         if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
 
-        this.table.insert(this.mapping(databaseEntry)).runNoReply(this.connection);
+        final String key = this.name + ":" + databaseEntry.getId();
+
+        this.jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getDocument()).toBytes());
         this.entries.add(databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
@@ -99,9 +99,11 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
     public void update(@NotNull DatabaseEntry databaseEntry) {
 
         if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
-        this.table.update(this.mapping(databaseEntry)).runNoReply(this.connection);
 
-        this.entries.remove(databaseEntry);
+        final String key = this.name + ":" + databaseEntry.getId();
+        this.jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
+
+        this.entries.removeIf(entry -> entry.getId().equals(databaseEntry.getId()));
         this.entries.add(databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
@@ -113,8 +115,9 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
 
         if (!this.exists(id)) throw new NoSuchEntryFound(id);
 
-        this.table.filter(this.mapping(id)).delete().runNoReply(this.connection);
-        this.entries.removeIf(databaseEntity -> databaseEntity.getId().equals(id));
+        final String key = this.name + ":" + id;
+        this.jedis.del(key.getBytes());
+        this.entries.removeIf(databaseEntry -> databaseEntry.getId().equals(id));
 
     }
 
@@ -125,26 +128,19 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
 
     @Override
     public void clear() {
-        this.table.delete().runNoReply(this.connection);
-        this.entries.clear();
+
+        for (DatabaseEntry entry : this.entries) this.delete(entry.getId());
+
     }
 
     @Override
     public boolean exists(@NotNull String id) {
-        return this.entries.stream().anyMatch(databaseEntity -> databaseEntity.getId().equals(id));
+        return this.entries.stream().anyMatch(databaseEntry -> databaseEntry.getId().equals(id));
     }
 
     @Override
     public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.stream().filter(databaseEntity -> databaseEntity.getId().equals(id)).findFirst().orElse(null));
-    }
-
-    private MapObject<Object, Object> mapping(@NotNull String id) {
-        return RethinkDB.r.hashMap("id", id);
-    }
-
-    private Map<Object, Object> mapping(@NotNull DatabaseEntry databaseEntry) {
-        return this.mapping(databaseEntry.getId()).with("values", databaseEntry.getDocument().toString());
+        return Optional.ofNullable(this.entries.stream().filter(databaseEntry -> databaseEntry.getId().equals(id)).findFirst().orElse(null));
     }
 
 }

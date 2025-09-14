@@ -1,9 +1,9 @@
-package de.lino.database.provider.entity;
+package de.lino.database.provider.sql.orcale;
 
 /*
  * MIT License
  *
- * Copyright (c) lino, 10.09.2025
+ * Copyright (c) lino, 08.09.2025
  * Copyright (c) contributors
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -25,23 +25,18 @@ package de.lino.database.provider.entity;
  * SOFTWARE.
  */
 
-import de.lino.database.json.JsonDocument;
+import de.lino.database.configuration.Credentials;
+import de.lino.database.provider.DatabaseType;
+import de.lino.database.provider.sql.SQLDatabaseProvider;
+import de.lino.database.provider.sql.SQLExecution;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import org.jetbrains.annotations.NotNull;
 
 @Getter
-@RequiredArgsConstructor
-public class DatabaseEntry {
+public class OracleSQLDatabaseProvider extends SQLDatabaseProvider {
 
-    private final String id;
-    private final JsonDocument document;
-
-    /**
-     * Contains the MetaData of the entry
-     * @return JsonDocument
-     */
-    public JsonDocument getMetaData() {
-        return this.document.getMetaData("data");
+    public OracleSQLDatabaseProvider(@NotNull Credentials credentials) {
+        super(DatabaseType.ORACLE, new SQLExecution(DatabaseType.ORACLE, credentials));
     }
-
+    
 }
