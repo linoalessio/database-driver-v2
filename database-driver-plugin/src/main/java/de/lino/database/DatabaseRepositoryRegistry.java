@@ -74,7 +74,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
     public static void logBytes(String message, JsonDocument document) {
         if (!LOG_BYTES) return;
-        System.out.printf(String.format(message, document.toBytes().length));
+        System.out.println(String.format(message, document.toBytes().length));
     }
 
     @Override
@@ -117,12 +117,19 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
         source.getSections().forEach(section -> {
 
-            System.out.println(section.getName());
-            if (destination.existsSection(section.getName()))
-                destination.deleteSection(section.getName());
+            if (this.databaseProviders.get(sourceId).first().equals(DatabaseType.REDIS)) {
 
-            final DatabaseSection databaseSection = destination.createSection(section.getName());
-            section.getEntries().forEach(databaseSection::insert);
+                final String sectionName = section.getName().split(":")[0];
+                final DatabaseSection databaseSection = destination.createSection(sectionName);
+                section.getEntries().forEach(databaseSection::insert);
+
+            } else {
+
+                if (destination.existsSection(section.getName())) destination.deleteSection(section.getName());
+                final DatabaseSection databaseSection = destination.createSection(section.getName());
+                section.getEntries().forEach(databaseSection::insert);
+
+            }
 
         });
 
