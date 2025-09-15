@@ -79,7 +79,8 @@ public class JsonDatabaseSection implements DatabaseSection {
 
         if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
 
-        new JsonDocument().append("id", databaseEntry).append("data", databaseEntry.getMetaData()).write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
+        final JsonDocument document = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getDocument());
+        document.write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
         this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
