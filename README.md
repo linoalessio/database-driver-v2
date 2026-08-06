@@ -62,7 +62,45 @@ git clone https://github.com/linoalessio/database-driver-v2.git
 
 Or add it as a Maven dependency (replace `%version%` with the version you want to use, currently
 `1.1`). `database-driver-api` gives you the interfaces to code against; `database-driver-plugin`
-provides the actual implementations and must be present on the runtime classpath:
+provides the actual implementations and must be present on the runtime classpath. The artifacts
+are published to **GitHub Packages**, not Maven Central, so two extra steps are required before
+the dependencies below will resolve.
+
+**1. Point Maven at the package registry** by adding this repository to your `pom.xml`:
+
+```xml
+<repositories>
+  <repository>
+    <id>github</id>
+    <name>GitHub LinoAlessio Apache Maven Packages</name>
+    <url>https://maven.pkg.github.com/linoalessio/database-driver-v2</url>
+  </repository>
+</repositories>
+```
+
+**2. Authenticate.** GitHub Packages requires a logged-in request for every download — including
+this public repository. Create a
+[personal access token](https://github.com/settings/tokens) with the **`read:packages`** scope,
+then add a matching server entry to your `~/.m2/settings.xml` (do **not** hardcode the token in
+the file — reference an environment variable instead):
+
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>github</id> <!-- must match the <id> used in the <repository> block above -->
+      <username>YOUR_GITHUB_USERNAME</username>
+      <password>${env.GITHUB_TOKEN}</password>
+    </server>
+  </servers>
+</settings>
+```
+
+```bash
+export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx   # the token you generated above
+```
+
+**3. Declare the dependencies:**
 
 ```xml
 <dependencies>
