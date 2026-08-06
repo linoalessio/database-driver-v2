@@ -122,8 +122,8 @@ public class SQLExecution {
 
         hikariConfig.setMaximumPoolSize(10);
         hikariConfig.setMinimumIdle(5);
-        hikariConfig.setConnectionTimeout(30000);
-        hikariConfig.setMaxLifetime(1800000);
+        hikariConfig.setConnectionTimeout(30_000);
+        hikariConfig.setMaxLifetime(1_800_000);
 
         switch (databaseType) {
 
@@ -134,7 +134,7 @@ public class SQLExecution {
                 hikariConfig.setPassword(credentials.getPassword());
             }
             case SQLITE -> {
-                hikariConfig.setJdbcUrl("jdbc:sqlite:" + credentials.getFileRepository());
+                hikariConfig.setJdbcUrl("jdbc:sqlite:" + credentials.getFileRepository() + ".sqlite");
                 hikariConfig.setDriverClassName(databaseType.getDriverClass());
                 hikariConfig.setUsername(credentials.getUserName());
                 hikariConfig.setPassword(credentials.getPassword());
