@@ -26,7 +26,6 @@ package de.lino.database;
  * SOFTWARE.
  */
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import de.lino.database.configuration.Credentials;
 import de.lino.database.file.DefaultFileProvider;
@@ -54,7 +53,6 @@ import org.jetbrains.annotations.UnmodifiableView;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 
 @Getter
 public class DatabaseRepositoryRegistry extends DatabaseRepository {
@@ -79,22 +77,15 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
     @Override
     public @UnmodifiableView List<DatabaseProvider> getDatabaseProviderPool() {
-
-        final List<DatabaseProvider> providers = Lists.newCopyOnWriteArrayList();
-        this.databaseProviders.values().forEach(pair -> providers.add(pair.second()));
-
-        return providers;
+        return this.databaseProviders.values().stream().map(Pair::second).toList();
     }
 
     @Override
     public @UnmodifiableView List<DatabaseProvider> getDatabaseProviderPool(@NotNull DatabaseType databaseType) {
-
-        final List<DatabaseProvider> providers = Lists.newCopyOnWriteArrayList();
-        this.databaseProviders.values().forEach(pair -> {
-            if (pair.first().equals(databaseType)) providers.add(pair.second());
-        });
-
-        return providers;
+        return this.databaseProviders.values().stream()
+                .filter(pair -> pair.first().equals(databaseType))
+                .map(Pair::second)
+                .toList();
     }
 
     @Override
@@ -102,7 +93,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
         this.databaseProviders.forEach((key, value) -> {
             value.second().shutdown();
-            System.out.println("Database Provider with id #" + key + " (" + this.getDatabaseProviders().get(key).first() + ") successfully unregistered");
+            System.out.println("Database Provider with id #" + key + " (" + value.first() + ") successfully unregistered");
         });
 
         this.databaseProviders.clear();
@@ -112,12 +103,13 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
     @Override
     public Pair<DatabaseProvider, DatabaseProvider> convert(@NotNull int sourceId, @NotNull int targetId) {
 
+        final DatabaseType sourceType = this.databaseProviders.get(sourceId).first();
         final DatabaseProvider source = this.databaseProviders.get(sourceId).second();
         final DatabaseProvider destination = this.databaseProviders.get(targetId).second();
 
         source.getSections().forEach(section -> {
 
-            if (this.databaseProviders.get(sourceId).first().equals(DatabaseType.REDIS)) {
+            if (sourceType.equals(DatabaseType.REDIS)) {
 
                 final String sectionName = section.getName().split(":")[0];
                 final DatabaseSection databaseSection = destination.createSection(sectionName);
@@ -133,13 +125,14 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
         });
 
-        System.out.println("Database Provider with id #" + sourceId + " (" + this.getDatabaseProviders().get(sourceId).first() + ") successfully converted to database provider with id #" + targetId + " (" + this.databaseProviders.get(targetId).first() + ")");
+        System.out.println("Database Provider with id #" + sourceId + " (" + sourceType + ") successfully converted to database provider with id #" + targetId + " (" + this.databaseProviders.get(targetId).first() + ")");
         return new Pair<>(source, destination);
     }
 
     @Override
     public Optional<DatabaseProvider> findDatabaseProviderById(@NotNull int id) {
-        return Optional.ofNullable(this.databaseProviders.get(id).second());
+        final Pair<DatabaseType, DatabaseProvider> pair = this.databaseProviders.get(id);
+        return pair == null ? Optional.empty() : Optional.of(pair.second());
     }
 
     @Override
@@ -147,39 +140,38 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
         if (this.databaseProviders.containsKey(id)) throw new IllegalStateException("Database Provider with id #" + id + " already exists");
 
-        final AtomicReference<DatabaseProvider> databaseProviderAtomicReference = new AtomicReference<>();
+        final DatabaseProvider databaseProvider = switch (databaseType) {
 
-        switch (databaseType) {
+            case MY_SQL -> new MySQLDatabaseProvider(credentials);
+            case JSON -> new JsonDatabaseProvider(credentials);
+            case H2_DB -> new H2DatabaseProvider(credentials);
+            case MONGO_DB -> new MongoDBDatabaseProvider(credentials);
+            case POSTGRE_SQL -> new PostgreSQLDatabaseProvider(credentials);
+            case SQLITE -> new SQLiteDatabaseProvider(credentials);
+            case MARIA_DB -> new MariaDBDatabaseProvider(credentials);
+            case RETHINK_DB -> new RethinkDBDatabaseProvider(credentials);
+            case ORACLE -> new OracleSQLDatabaseProvider(credentials);
+            case MICROSOFT_SQL_SERVER -> new MicrosoftSQLServerDatabaseProvider(credentials);
+            case APACHE_DERBY -> new ApacheDerbyDatabaseProvider(credentials);
+            case REDIS -> new RedisDatabaseProvider(credentials);
 
-            case MY_SQL -> databaseProviderAtomicReference.set(new MySQLDatabaseProvider(credentials));
-            case JSON -> databaseProviderAtomicReference.set(new JsonDatabaseProvider(credentials));
-            case H2_DB -> databaseProviderAtomicReference.set(new H2DatabaseProvider(credentials));
-            case MONGO_DB -> databaseProviderAtomicReference.set(new MongoDBDatabaseProvider(credentials));
-            case POSTGRE_SQL -> databaseProviderAtomicReference.set(new PostgreSQLDatabaseProvider(credentials));
-            case SQLITE -> databaseProviderAtomicReference.set(new SQLiteDatabaseProvider(credentials));
-            case MARIA_DB -> databaseProviderAtomicReference.set(new MariaDBDatabaseProvider(credentials));
-            case RETHINK_DB -> databaseProviderAtomicReference.set(new RethinkDBDatabaseProvider(credentials));
-            case ORACLE -> databaseProviderAtomicReference.set(new OracleSQLDatabaseProvider(credentials));
-            case MICROSOFT_SQL_SERVER -> databaseProviderAtomicReference.set(new MicrosoftSQLServerDatabaseProvider(credentials));
-            case APACHE_DERBY -> databaseProviderAtomicReference.set(new ApacheDerbyDatabaseProvider(credentials));
-            case REDIS -> databaseProviderAtomicReference.set(new RedisDatabaseProvider(credentials));
+        };
 
-        }
-
-        this.databaseProviders.put(id, new Pair<>(databaseType, databaseProviderAtomicReference.get()));
-        System.out.println("Database Provider with id #" + id + " (" + this.getDatabaseProviders().get(id).first() + ") successfully registered");
-        return databaseProviderAtomicReference.get();
+        this.databaseProviders.put(id, new Pair<>(databaseType, databaseProvider));
+        System.out.println("Database Provider with id #" + id + " (" + databaseType + ") successfully registered");
+        return databaseProvider;
     }
 
     @Override
     public DatabaseProvider unregisterDatabaseProvider(@NotNull int id) {
 
-        if (!this.databaseProviders.containsKey(id)) throw new IllegalStateException("Database Provider with id #" + id + " does not exist");
+        final Pair<DatabaseType, DatabaseProvider> pair = this.databaseProviders.get(id);
+        if (pair == null) throw new IllegalStateException("Database Provider with id #" + id + " does not exist");
 
-        final DatabaseProvider unregistered = this.databaseProviders.get(id).second();
+        final DatabaseProvider unregistered = pair.second();
         unregistered.shutdown();
         this.databaseProviders.remove(id);
-        System.out.println("Database Provider with id #" + id + " (" + this.getDatabaseProviders().get(id).first() + ") successfully unregistered");
+        System.out.println("Database Provider with id #" + id + " (" + pair.first() + ") successfully unregistered");
 
         return unregistered;
 

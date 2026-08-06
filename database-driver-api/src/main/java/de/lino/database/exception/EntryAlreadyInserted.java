@@ -25,8 +25,17 @@ package de.lino.database.exception;
  * SOFTWARE.
  */
 
+/**
+ * Thrown when an attempt is made to insert a {@link de.lino.database.provider.entity.DatabaseEntry}
+ * with an id that already exists in the target {@link de.lino.database.provider.DatabaseSection}.
+ */
 public class EntryAlreadyInserted extends RuntimeException {
 
+    /**
+     * Creates a new exception for the entry with the given, already existing, id.
+     *
+     * @param id the primary key that was already present
+     */
     public EntryAlreadyInserted(String id) {
         super("Entry already exists with id='" + id + "'");
     }

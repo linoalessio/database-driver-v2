@@ -25,7 +25,6 @@ package de.lino.database.provider.nosql.mongodb;
  * SOFTWARE.
  */
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
@@ -134,7 +133,7 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
     @Override
     public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return Lists.newCopyOnWriteArrayList(this.entries.values());
+        return List.copyOf(this.entries.values());
     }
 
 }

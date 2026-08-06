@@ -25,7 +25,6 @@ package de.lino.database.provider.nosql.json;
  * SOFTWARE.
  */
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.configuration.Credentials;
@@ -149,7 +148,7 @@ public class JsonDatabaseSection implements DatabaseSection {
 
     @Override
     public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return Lists.newCopyOnWriteArrayList(this.entries.values());
+        return List.copyOf(this.entries.values());
     }
 
 }

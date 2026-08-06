@@ -39,67 +39,105 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * Central entry point for managing the pool of registered {@link DatabaseProvider} instances.
+ * <p>
+ * A single {@link DatabaseRepository} instance is expected to exist per application and is
+ * exposed through the generated {@code getInstance()} accessor once a concrete subclass has
+ * installed itself via {@link #setInstance(DatabaseRepository)}. Implementations are responsible
+ * for tracking
+ * registered providers by numeric id, creating new providers for a given {@link DatabaseType}
+ * and {@link Credentials}, and converting data between two registered providers.
+ * <p>
+ * Every synchronous operation declared here has a corresponding {@code *Async} default method
+ * that executes the same logic on the common {@link CompletableFuture} pool.
+ */
 public abstract class DatabaseRepository {
 
+    /**
+     * The globally accessible instance of this repository, installed via
+     * {@link #setInstance(DatabaseRepository)} and exposed through the generated
+     * {@code getInstance()} accessor.
+     */
     @Getter
     private static DatabaseRepository instance;
 
+    /**
+     * Installs the given repository as the globally accessible instance returned by the
+     * generated {@code getInstance()} accessor.
+     *
+     * @param instance the repository instance to install
+     */
     protected static void setInstance(DatabaseRepository instance) {
         DatabaseRepository.instance = instance;
     }
 
     /**
-     * Get an unmodifiable list of all registered database provider
-     * @return a List
+     * Get an unmodifiable list of all registered database provider.
+     *
+     * @return an unmodifiable {@code List} of every registered {@link DatabaseProvider}
      */
     @UnmodifiableView
     public abstract List<DatabaseProvider> getDatabaseProviderPool();
 
     /**
-     * Get an unmodifiable list of all registered database provider by a specific type
-     * @return a List
+     * Get an unmodifiable list of all registered database provider by a specific type.
+     *
+     * @param databaseType the database type to filter by
+     * @return an unmodifiable {@code List} of every registered {@link DatabaseProvider} of the
+     * given type
      */
     @UnmodifiableView
     public abstract List<DatabaseProvider> getDatabaseProviderPool(@NotNull DatabaseType databaseType);
 
     /**
-     * Shutdown all running database providers
+     * Shutdown all running database providers.
      */
     public abstract void shutdown();
 
     /**
-     * Convert the content of a specific database provider to another one
-     * @param sourceId: Id of the database provider that shall be used as a resource database
-     * @param targetId: Id of the database provider that will be used as a destination database
-     * @return Pair<DatabaseProvider, DatabaseProvider>, first one is source, second destinatio
+     * Convert the content of a specific database provider to another one.
+     *
+     * @param sourceId Id of the database provider that shall be used as a resource database
+     * @param targetId Id of the database provider that will be used as a destination database
+     * @return a {@link Pair} of the two providers involved, the first one being the source, the
+     * second one being the destination
      */
     public abstract Pair<DatabaseProvider, DatabaseProvider> convert(@NotNull int sourceId, @NotNull int targetId);
 
     /**
-     * Get a specific database provider by id
-     * @param id: database provider id
-     * @return Optional<DatabaseProvider>
+     * Get a specific database provider by id.
+     *
+     * @param id database provider id
+     * @return an {@link Optional} containing the matching {@link DatabaseProvider}, or empty if
+     * no provider is registered under the given id
      */
     public abstract Optional<DatabaseProvider> findDatabaseProviderById(@NotNull int id);
 
     /**
-     * Register a new database provider
-     * @param id: Id of the database
-     * @param databaseType: database type
-     * @param credentials: login credentials
+     * Register a new database provider.
+     *
+     * @param id           Id of the database
+     * @param databaseType database type
+     * @param credentials  login credentials
+     * @return the newly created and registered {@link DatabaseProvider}
      */
     public abstract DatabaseProvider registerDatabaseProvider(@NotNull int id, @NotNull DatabaseType databaseType, @NotNull Credentials credentials);
 
     /**
-     * Shutdown a specific database provider and unregister it from the repository
-     * @param id: database provider id
+     * Shutdown a specific database provider and unregister it from the repository.
+     *
+     * @param id database provider id
+     * @return the {@link DatabaseProvider} that was shut down and unregistered
      */
     public abstract DatabaseProvider unregisterDatabaseProvider(@NotNull int id);
 
 
     /**
-     * Execute the getDatabaseProviderPool process async
-     * @return CompletableFuture, type List<DatabaseProvider>
+     * Execute the {@link #getDatabaseProviderPool()} process async.
+     *
+     * @return a {@link CompletableFuture} resolving to an unmodifiable list of every registered
+     * {@link DatabaseProvider}
      */
     @UnmodifiableView
     public CompletableFuture<List<DatabaseProvider>> getDatabaseProviderPoolAsync() {
@@ -107,8 +145,11 @@ public abstract class DatabaseRepository {
     }
 
     /**
-     * Execute the getDatabaseProviderPool(Type) process async
-     * @return CompletableFuture, type List<DatabaseProvider>
+     * Execute the {@link #getDatabaseProviderPool(DatabaseType)} process async.
+     *
+     * @param databaseType the database type to filter by
+     * @return a {@link CompletableFuture} resolving to an unmodifiable list of every registered
+     * {@link DatabaseProvider} of the given type
      */
     @UnmodifiableView
     public CompletableFuture<List<DatabaseProvider>> getDatabaseProviderPoolAsync(@NonNull DatabaseType databaseType) {
@@ -116,24 +157,32 @@ public abstract class DatabaseRepository {
     }
 
     /**
-     * Execute the shutdown process async
-     * @return CompletableFuture, type Void
+     * Execute the {@link #shutdown()} process async.
+     *
+     * @return a {@link CompletableFuture} that completes once every provider has been shut down
      */
     public CompletableFuture<Void> shutdownAsync() {
         return CompletableFuture.runAsync(this::shutdown);
     }
 
     /**
-     * Execute the convert process async
-     * @return CompletableFuture, type BiConsumer<DatabaseProvider, DatabaseProvider>
+     * Execute the {@link #convert(int, int)} process async.
+     *
+     * @param sourceId Id of the database provider that shall be used as a resource database
+     * @param targetId Id of the database provider that will be used as a destination database
+     * @return a {@link CompletableFuture} resolving to a {@link Pair} of the source and
+     * destination providers
      */
     public CompletableFuture<Pair<DatabaseProvider, DatabaseProvider>> convertAsync(@NotNull int sourceId, @NotNull int targetId) {
         return CompletableFuture.supplyAsync(() -> convert(sourceId, targetId));
     }
 
     /**
-     * Execute the find database provider by id process async
-     * @return CompletableFuture, type Optional<DatabaseProvider>
+     * Execute the {@link #findDatabaseProviderById(int)} process async.
+     *
+     * @param id database provider id
+     * @return a {@link CompletableFuture} resolving to an {@link Optional} containing the
+     * matching {@link DatabaseProvider}, or empty if none is registered under the given id
      */
     @SneakyThrows
     public CompletableFuture<Optional<DatabaseProvider>> findDatabaseProviderByIdAsync(int id) {
@@ -141,16 +190,25 @@ public abstract class DatabaseRepository {
     }
 
     /**
-     * Execute the register process async
-     * @return CompletableFuture, type Void
+     * Execute the {@link #registerDatabaseProvider(int, DatabaseType, Credentials)} process
+     * async.
+     *
+     * @param id           Id of the database
+     * @param databaseType database type
+     * @param credentials  login credentials
+     * @return a {@link CompletableFuture} resolving to the newly created and registered
+     * {@link DatabaseProvider}
      */
     public CompletableFuture<DatabaseProvider> registerDatabaseProviderAsync(@NotNull int id, @NotNull DatabaseType databaseType, @NotNull Credentials credentials) {
         return CompletableFuture.supplyAsync(() -> registerDatabaseProvider(id, databaseType, credentials));
     }
 
     /**
-     * Execute the unregister process async
-     * @return CompletableFuture, type Void
+     * Execute the {@link #unregisterDatabaseProvider(int)} process async.
+     *
+     * @param id database provider id
+     * @return a {@link CompletableFuture} resolving to the {@link DatabaseProvider} that was shut
+     * down and unregistered
      */
     public CompletableFuture<DatabaseProvider> unregisterDatabaseProviderAsync(@NotNull int id) {
         return CompletableFuture.supplyAsync(() -> unregisterDatabaseProvider(id));

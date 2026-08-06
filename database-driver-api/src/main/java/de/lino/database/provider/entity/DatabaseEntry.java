@@ -29,11 +29,26 @@ import de.lino.database.json.JsonDocument;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * A single record stored inside a {@link de.lino.database.provider.DatabaseSection}, consisting
+ * of a unique primary key and its associated {@link JsonDocument} content.
+ * <p>
+ * By convention, the wrapped document (see the generated {@code getDocument()} accessor) stores
+ * its actual payload under the {@code "data"} key, which can be retrieved directly via
+ * {@link #getMetaData()}.
+ */
 @Getter
 @RequiredArgsConstructor
 public class DatabaseEntry {
 
+    /**
+     * The primary key that uniquely identifies this entry within its section.
+     */
     private final String id;
+
+    /**
+     * The full document backing this entry, including its {@code "data"} envelope.
+     */
     private final JsonDocument document;
 
     /**
