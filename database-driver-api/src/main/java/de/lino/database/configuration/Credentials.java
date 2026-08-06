@@ -37,14 +37,43 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+/**
+ * Holds the connection details required to reach a database backend (host, credentials, port,
+ * database name and, for file-based providers, a repository directory), and transparently
+ * persists them to a JSON configuration file.
+ * <p>
+ * On construction, if {@link #configDestination} does not exist yet, the given values are
+ * written to it as JSON; otherwise the existing file is read and its values are loaded instead,
+ * ignoring the constructor arguments other than {@code configDestination}.
+ */
 @Getter
 public class Credentials {
 
+    /**
+     * Placeholder value used for fields that are not applicable to a given provider
+     * (e.g. host/credentials for the file-based JSON provider).
+     */
     private static final Object UNKNOWN = "Unknown";
 
+    /**
+     * The file this configuration is persisted to and loaded from.
+     */
     private final Path configDestination;
+
+    /**
+     * The host address, login username and password used to authenticate against the database.
+     */
     private String address, userName, password;
+
+    /**
+     * The port the database is listening on.
+     */
     private int port;
+
+    /**
+     * The name of the database to connect to, and, for file-based providers, the directory used
+     * to store their data.
+     */
     private String database, fileRepository;
 
     /**
@@ -100,10 +129,31 @@ public class Credentials {
 
     }
 
+    /**
+     * Convenience constructor for network-based providers that do not require a dedicated file
+     * repository; delegates to {@link #Credentials(Path, String, String, String, int, String, Path)}
+     * with {@link #UNKNOWN} as the file repository.
+     *
+     * @param configDestination configuration file where the credentials will be saved
+     * @param address           host address
+     * @param userName          login username
+     * @param password          verification password
+     * @param port              database port
+     * @param database          database name
+     */
     public Credentials(Path configDestination, String address, String userName, String password, int port, String database) {
         this(configDestination, address, userName, password, port, database, Paths.get(UNKNOWN.toString()));
     }
 
+    /**
+     * Convenience constructor for the file-based JSON provider, which only requires a file
+     * repository and no network connection details; delegates to
+     * {@link #Credentials(Path, String, String, String, int, String, Path)} with
+     * {@link #UNKNOWN} placeholders for every network-related field.
+     *
+     * @param configDestination configuration file where the credentials will be saved
+     * @param fileRepository    repository where the file database shall save its data
+     */
     public Credentials(Path configDestination, Path fileRepository) {
         this(configDestination, UNKNOWN.toString(), UNKNOWN.toString(), UNKNOWN.toString(), -1, UNKNOWN.toString(), fileRepository);
     }

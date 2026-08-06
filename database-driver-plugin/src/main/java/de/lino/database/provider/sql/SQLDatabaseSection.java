@@ -25,7 +25,6 @@ package de.lino.database.provider.sql;
  * SOFTWARE.
  */
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import de.lino.database.DatabaseRepositoryRegistry;
 import de.lino.database.exception.EntryAlreadyInserted;
@@ -161,7 +160,7 @@ public class SQLDatabaseSection implements DatabaseSection {
 
     @Override
     public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return Lists.newCopyOnWriteArrayList(this.entries.values());
+        return List.copyOf(this.entries.values());
     }
 
 }

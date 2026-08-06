@@ -25,7 +25,6 @@ package de.lino.database.provider.nosql.redis;
  * SOFTWARE.
  */
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import de.lino.database.configuration.Credentials;
 import de.lino.database.provider.DatabaseProvider;
@@ -59,7 +58,9 @@ public class RedisDatabaseProvider implements DatabaseProvider {
 
         if (credentials.getUserName().isEmpty() && credentials.getPassword().isEmpty()) {
             this.jedisPool = new JedisPool(jedisPoolConfig, credentials.getAddress(), credentials.getPort());
-            this.jedisPool.getResource().select(Integer.parseInt(credentials.getDatabase()));
+            try (final Jedis jedis = this.jedisPool.getResource()) {
+                jedis.select(Integer.parseInt(credentials.getDatabase()));
+            }
         } else {
             this.jedisPool = new JedisPool(jedisPoolConfig, "redis://:" + credentials.getPassword() + "@" + credentials.getAddress() + ":" + credentials.getPort() + "/" + credentials.getDatabase());
         }
@@ -67,15 +68,19 @@ public class RedisDatabaseProvider implements DatabaseProvider {
         String cursor = "0";
         final ScanParams scanParams = new ScanParams().match("*").count(100);
 
-        do {
+        try (final Jedis jedis = this.jedisPool.getResource()) {
 
-            final ScanResult<String> result = this.jedisPool.getResource().scan(cursor, scanParams);
-            for (String key : result.getResult())
-                this.databaseSections.put(key, new RedisDatabaseSection(this.jedisPool.getResource(), key));
+            do {
 
-            cursor = result.getCursor();
+                final ScanResult<String> result = jedis.scan(cursor, scanParams);
+                for (String key : result.getResult())
+                    this.databaseSections.put(key, new RedisDatabaseSection(this.jedisPool, key));
 
-        } while (!cursor.equals("0"));
+                cursor = result.getCursor();
+
+            } while (!cursor.equals("0"));
+
+        }
 
     }
 
@@ -90,7 +95,7 @@ public class RedisDatabaseProvider implements DatabaseProvider {
 
         if (this.databaseSections.containsKey(name)) return this.databaseSections.get(name);
 
-        final DatabaseSection databaseSection = new RedisDatabaseSection(this.jedisPool.getResource(), name);
+        final DatabaseSection databaseSection = new RedisDatabaseSection(this.jedisPool, name);
         this.databaseSections.put(name, databaseSection);
 
         return databaseSection;
@@ -123,7 +128,7 @@ public class RedisDatabaseProvider implements DatabaseProvider {
 
     @Override
     public @UnmodifiableView List<DatabaseSection> getSections() {
-        return Lists.newCopyOnWriteArrayList(this.databaseSections.values());
+        return List.copyOf(this.databaseSections.values());
     }
 
     @Override

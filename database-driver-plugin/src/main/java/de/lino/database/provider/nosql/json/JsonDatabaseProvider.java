@@ -25,7 +25,6 @@ package de.lino.database.provider.nosql.json;
  * SOFTWARE.
  */
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import de.lino.database.configuration.Credentials;
 import de.lino.database.json.file.FileProvider;
@@ -86,7 +85,7 @@ public class JsonDatabaseProvider implements DatabaseProvider {
 
     @Override
     public @UnmodifiableView List<DatabaseSection> getSections() {
-        return Lists.newCopyOnWriteArrayList(this.databaseSections.values());
+        return List.copyOf(this.databaseSections.values());
     }
 
     @Override

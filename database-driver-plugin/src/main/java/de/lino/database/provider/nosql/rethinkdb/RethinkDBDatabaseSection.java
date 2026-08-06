@@ -26,7 +26,6 @@ package de.lino.database.provider.nosql.rethinkdb;
  */
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.rethinkdb.RethinkDB;
 import com.rethinkdb.gen.ast.Db;
@@ -143,7 +142,7 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
 
     @Override
     public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return Lists.newCopyOnWriteArrayList(this.entries.values());
+        return List.copyOf(this.entries.values());
     }
 
     private MapObject<Object, Object> mapping(@NotNull String id) {

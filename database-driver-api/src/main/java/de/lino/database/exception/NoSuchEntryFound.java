@@ -25,8 +25,18 @@ package de.lino.database.exception;
  * SOFTWARE.
  */
 
+/**
+ * Thrown when an operation (such as {@code update} or {@code delete}) is attempted on a
+ * {@link de.lino.database.provider.entity.DatabaseEntry} whose id does not exist in the target
+ * {@link de.lino.database.provider.DatabaseSection}.
+ */
 public class NoSuchEntryFound extends RuntimeException {
 
+    /**
+     * Creates a new exception for the entry with the given, non-existent, id.
+     *
+     * @param id the primary key that could not be found
+     */
     public NoSuchEntryFound(String id) {
         super("No such entry found with id='" + id + "'");
     }

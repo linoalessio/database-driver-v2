@@ -25,7 +25,6 @@ package de.lino.database.provider.nosql.rethinkdb;
  * SOFTWARE.
  */
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.rethinkdb.RethinkDB;
 import com.rethinkdb.gen.ast.Db;
@@ -101,7 +100,7 @@ public class RethinkDBDatabaseProvider implements DatabaseProvider {
 
     @Override
     public @UnmodifiableView List<DatabaseSection> getSections() {
-        return Lists.newCopyOnWriteArrayList(this.databaseSections.values());
+        return List.copyOf(this.databaseSections.values());
     }
 
     @Override

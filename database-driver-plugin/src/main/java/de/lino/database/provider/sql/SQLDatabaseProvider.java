@@ -25,7 +25,6 @@ package de.lino.database.provider.sql;
  * SOFTWARE.
  */
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import de.lino.database.provider.DatabaseProvider;
 import de.lino.database.provider.DatabaseSection;
@@ -102,7 +101,7 @@ public class SQLDatabaseProvider implements DatabaseProvider {
 
     @Override
     public @UnmodifiableView List<DatabaseSection> getSections() {
-        return Lists.newCopyOnWriteArrayList(this.databaseSections.values());
+        return List.copyOf(this.databaseSections.values());
     }
 
     @Override
