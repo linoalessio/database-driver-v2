@@ -68,7 +68,7 @@ public final class DocumentJsonParser {
      * @throws JsonSyntaxException if the string does not contain a single, valid JSON value
      */
     @NotNull
-    public static JsonElement parseString(String json) throws JsonSyntaxException {
+    public static JsonElement parseString(@NotNull String json) throws JsonSyntaxException {
         return parseReader(new StringReader(json));
     }
 
@@ -83,7 +83,7 @@ public final class DocumentJsonParser {
      * @throws JsonIOException     if an I/O error occurs while reading
      */
     @NotNull
-    public static JsonElement parseReader(Reader reader) throws JsonSyntaxException {
+    public static JsonElement parseReader(@NotNull Reader reader) throws JsonSyntaxException {
 
         try {
 
@@ -104,19 +104,16 @@ public final class DocumentJsonParser {
                 throw exception;
             } finally {
 
-                if (jsonReader != null) {
+                if (throwable != null) {
 
-                    if (throwable != null) {
-
-                        try {
-                            jsonReader.close();
-                        } catch (final Throwable exception) {
-                            throwable.addSuppressed(exception);
-                        }
-
-                    } else {
+                    try {
                         jsonReader.close();
+                    } catch (final Throwable exception) {
+                        throwable.addSuppressed(exception);
                     }
+
+                } else {
+                    jsonReader.close();
                 }
 
             }
@@ -140,7 +137,7 @@ public final class DocumentJsonParser {
      *                              or stack space
      */
     @NotNull
-    private static JsonElement parseReader(JsonReader reader) throws JsonIOException, JsonSyntaxException {
+    private static JsonElement parseReader(@NotNull JsonReader reader) throws JsonIOException, JsonSyntaxException {
         boolean lenient = reader.isLenient();
         reader.setLenient(true);
 

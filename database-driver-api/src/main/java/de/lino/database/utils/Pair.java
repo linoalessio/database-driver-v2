@@ -1,5 +1,7 @@
 package de.lino.database.utils;
 
+import org.jetbrains.annotations.NotNull;
+
 /*
  * MIT License
  *
@@ -33,6 +35,6 @@ package de.lino.database.utils;
  * @param first  the first value
  * @param second the second value
  */
-public record Pair<T, R>(T first, R second) {
+public record Pair<T, R>(@NotNull T first, @NotNull R second) {
 
 }

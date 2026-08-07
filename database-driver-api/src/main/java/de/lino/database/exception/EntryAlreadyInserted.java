@@ -1,5 +1,7 @@
 package de.lino.database.exception;
 
+import org.jetbrains.annotations.NotNull;
+
 /*
  * MIT License
  *
@@ -36,7 +38,7 @@ public class EntryAlreadyInserted extends RuntimeException {
      *
      * @param id the primary key that was already present
      */
-    public EntryAlreadyInserted(String id) {
+    public EntryAlreadyInserted(@NotNull String id) {
         super("Entry already exists with id='" + id + "'");
     }
 

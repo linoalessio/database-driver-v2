@@ -33,6 +33,7 @@ import de.lino.database.json.adapter.JsonDocumentTypeAdapter;
 import de.lino.database.json.parser.DocumentJsonParser;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
 import java.lang.reflect.Type;
@@ -120,7 +121,7 @@ public class JsonDocument {
      * based constructors instead
      */
     @Deprecated
-    public JsonDocument(JsonObject jsonObject) {
+    public JsonDocument(@NotNull JsonObject jsonObject) {
         this.jsonObject = jsonObject;
     }
 
@@ -130,7 +131,7 @@ public class JsonDocument {
      *
      * @param json the JSON encoded string to parse
      */
-    public JsonDocument(String json) {
+    public JsonDocument(@NotNull String json) {
         JsonElement jsonElement;
         try {
             jsonElement = DocumentJsonParser.parseString(json);
@@ -147,7 +148,7 @@ public class JsonDocument {
      *
      * @param stream the input stream to read JSON content from
      */
-    public JsonDocument(InputStream stream) {
+    public JsonDocument(@NotNull InputStream stream) {
         try (InputStreamReader inputStreamReader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
             JsonElement jsonElement;
             try {
@@ -168,7 +169,7 @@ public class JsonDocument {
      *
      * @param json the reader to read JSON content from
      */
-    public JsonDocument(Reader json) {
+    public JsonDocument(@NotNull Reader json) {
         JsonElement jsonElement;
         try {
             jsonElement = DocumentJsonParser.parseReader(json);
@@ -185,7 +186,7 @@ public class JsonDocument {
      *
      * @param file the file to load the JSON content from
      */
-    public JsonDocument(File file) {
+    public JsonDocument(@NotNull File file) {
         try (InputStream stream = Files.newInputStream(file.toPath())) {
             this.jsonObject = new JsonDocument(stream).getJsonObject();
         } catch (final IOException exception) {
@@ -203,7 +204,7 @@ public class JsonDocument {
      * based constructors instead
      */
     @Deprecated
-    public JsonDocument(JsonElement jsonElement) {
+    public JsonDocument(@NotNull JsonElement jsonElement) {
         this(jsonElement.isJsonObject() ? jsonElement.getAsJsonObject() : new JsonObject());
     }
 
@@ -213,7 +214,7 @@ public class JsonDocument {
      * @param key   the entry's key
      * @param value the entry's value
      */
-    public JsonDocument(String key, String value) {
+    public JsonDocument(@NotNull String key, @Nullable String value) {
         this();
         this.append(key, value);
     }
@@ -225,7 +226,7 @@ public class JsonDocument {
      * @param key   the entry's key
      * @param value the entry's value
      */
-    public JsonDocument(String key, Object value) {
+    public JsonDocument(@NotNull String key, @Nullable Object value) {
         this();
         this.append(key, value);
     }
@@ -236,7 +237,7 @@ public class JsonDocument {
      * @param key   the entry's key
      * @param value the entry's value
      */
-    public JsonDocument(String key, Boolean value) {
+    public JsonDocument(@NotNull String key, @Nullable Boolean value) {
         this();
         this.append(key, value);
     }
@@ -247,7 +248,7 @@ public class JsonDocument {
      * @param key   the entry's key
      * @param value the entry's value
      */
-    public JsonDocument(String key, Number value) {
+    public JsonDocument(@NotNull String key, @Nullable Number value) {
         this();
         this.append(key, value);
     }
@@ -258,7 +259,7 @@ public class JsonDocument {
      * @param key   the entry's key
      * @param value the entry's value
      */
-    public JsonDocument(String key, Character value) {
+    public JsonDocument(@NotNull String key, @Nullable Character value) {
         this();
         this.append(key, value);
     }
@@ -269,7 +270,7 @@ public class JsonDocument {
      * @param key   the entry's key
      * @param value the nested document to store
      */
-    public JsonDocument(String key, JsonDocument value) {
+    public JsonDocument(@NotNull String key, @Nullable JsonDocument value) {
         this();
         this.append(key, value);
     }
@@ -281,7 +282,8 @@ public class JsonDocument {
      * @param value the value to store; if {@code null} the call is a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(String key, String value) {
+    @NotNull
+    public JsonDocument append(@NotNull String key, @Nullable String value) {
         if (value == null) return this;
         this.jsonObject.addProperty(key, value);
         return this;
@@ -295,7 +297,8 @@ public class JsonDocument {
      * @param value the value to serialize and store
      * @return this document, for chaining
      */
-    public JsonDocument append(String key, Object value) {
+    @NotNull
+    public JsonDocument append(@NotNull String key, @Nullable Object value) {
         if (value == null) {
             this.append(key, JsonNull.INSTANCE);
             return this;
@@ -311,7 +314,8 @@ public class JsonDocument {
      * @param value the value to store; if {@code null} the call is a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(String key, Number value) {
+    @NotNull
+    public JsonDocument append(@NotNull String key, @Nullable Number value) {
         if (value == null) return this;
         this.jsonObject.addProperty(key, value);
         return this;
@@ -324,7 +328,8 @@ public class JsonDocument {
      * @param value the value to store; if {@code null} the call is a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(String key, Boolean value) {
+    @NotNull
+    public JsonDocument append(@NotNull String key, @Nullable Boolean value) {
         if (value == null) return this;
         this.jsonObject.addProperty(key, value);
         return this;
@@ -337,7 +342,8 @@ public class JsonDocument {
      * @param value the value to store; if {@code null} the call is a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(String key, Character value) {
+    @NotNull
+    public JsonDocument append(@NotNull String key, @Nullable Character value) {
         if (value == null) return this;
         this.jsonObject.addProperty(key, value);
         return this;
@@ -350,7 +356,8 @@ public class JsonDocument {
      * @param value the nested document to store; if {@code null} the call is a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(String key, JsonDocument value) {
+    @NotNull
+    public JsonDocument append(@NotNull String key, @Nullable JsonDocument value) {
         if (value == null) return this;
         this.jsonObject.add(key, value.getJsonObject());
         return this;
@@ -363,7 +370,8 @@ public class JsonDocument {
      * @param value the entries to add; if {@code null} the call is a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(Map<String, Object> value) {
+    @NotNull
+    public JsonDocument append(@Nullable Map<String, Object> value) {
         if (value == null) return this;
         for (Map.Entry<String, Object> entry : value.entrySet()) this.append(entry.getKey(), entry.getValue());
         return this;
@@ -377,7 +385,8 @@ public class JsonDocument {
      *              a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(String key, byte[] value) {
+    @NotNull
+    public JsonDocument append(@Nullable String key, @Nullable byte[] value) {
         if (key == null || value == null) return this;
         return this.append(key, Base64.getEncoder().encodeToString(value));
     }
@@ -389,7 +398,8 @@ public class JsonDocument {
      *                     call is a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(JsonDocument jsonDocument) {
+    @NotNull
+    public JsonDocument append(@Nullable JsonDocument jsonDocument) {
         if (jsonDocument == null) return this;
         return this.append(jsonDocument.getJsonObject());
     }
@@ -401,7 +411,8 @@ public class JsonDocument {
      *                   a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(JsonObject jsonObject) {
+    @NotNull
+    public JsonDocument append(@Nullable JsonObject jsonObject) {
         if (jsonObject == null) return this;
         for (Map.Entry<String, JsonElement> entry : jsonObject.entrySet()) this.jsonObject.add(entry.getKey(), entry.getValue());
         return this;
@@ -414,7 +425,8 @@ public class JsonDocument {
      * @param inputStream the stream to read JSON content from
      * @return this document, for chaining
      */
-    public JsonDocument append(InputStream inputStream) {
+    @NotNull
+    public JsonDocument append(@NotNull InputStream inputStream) {
         try (InputStreamReader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8)) {
             return append(reader);
         } catch (Exception exception) {
@@ -430,7 +442,8 @@ public class JsonDocument {
      * @return this document, for chaining
      * @throws JsonSyntaxException if the reader's content is not valid JSON
      */
-    public JsonDocument append(Reader reader) {
+    @NotNull
+    public JsonDocument append(@NotNull Reader reader) {
         return append(DocumentJsonParser.parseReader(reader).getAsJsonObject());
     }
 
@@ -441,7 +454,8 @@ public class JsonDocument {
      * @param value the strings to store; if {@code null} the call is a no-op
      * @return this document, for chaining
      */
-    public JsonDocument append(String key, List<String> value) {
+    @NotNull
+    public JsonDocument append(@NotNull String key, @Nullable List<String> value) {
         if (value == null) return this;
         JsonArray jsonElements = new JsonArray();
         for (String b : value) jsonElements.add(b);
@@ -456,7 +470,8 @@ public class JsonDocument {
      * @return a new {@link JsonDocument} wrapping the nested object, or {@code null} if the key
      * is absent or does not hold a JSON object
      */
-    public JsonDocument getMetaData(String key) {
+    @Nullable
+    public JsonDocument getMetaData(@NotNull String key) {
         if (!jsonObject.has(key)) {
             return null;
         }
@@ -493,7 +508,8 @@ public class JsonDocument {
      * @param key the key to remove
      * @return this document, for chaining
      */
-    public JsonDocument remove(String key) {
+    @NotNull
+    public JsonDocument remove(@NotNull String key) {
         this.jsonObject.remove(key);
         return this;
     }
@@ -503,6 +519,7 @@ public class JsonDocument {
      *
      * @return this document, for chaining
      */
+    @NotNull
     public JsonDocument clear() {
         for (String key : this.getKeys()) this.jsonObject.remove(key);
         return this;
@@ -515,7 +532,7 @@ public class JsonDocument {
      * @return the value as an {@code int}
      * @throws NullPointerException if the key does not exist
      */
-    public int getInteger(String key) {
+    public int getInteger(@NotNull String key) {
         return this.jsonObject.get(key).getAsInt();
     }
 
@@ -526,7 +543,7 @@ public class JsonDocument {
      * @return the value as a {@code double}
      * @throws NullPointerException if the key does not exist
      */
-    public double getDouble(String key) {
+    public double getDouble(@NotNull String key) {
         return this.jsonObject.get(key).getAsDouble();
     }
 
@@ -537,7 +554,7 @@ public class JsonDocument {
      * @return the value as a {@code float}
      * @throws NullPointerException if the key does not exist
      */
-    public float getFloat(String key) {
+    public float getFloat(@NotNull String key) {
         return this.jsonObject.get(key).getAsFloat();
     }
 
@@ -548,7 +565,7 @@ public class JsonDocument {
      * @return the value as a {@code byte}
      * @throws NullPointerException if the key does not exist
      */
-    public byte getByte(String key) {
+    public byte getByte(@NotNull String key) {
         return this.jsonObject.get(key).getAsByte();
     }
 
@@ -559,7 +576,7 @@ public class JsonDocument {
      * @return the value as a {@code short}
      * @throws NullPointerException if the key does not exist
      */
-    public short getShort(String key) {
+    public short getShort(@NotNull String key) {
         return this.jsonObject.get(key).getAsShort();
     }
 
@@ -570,7 +587,7 @@ public class JsonDocument {
      * @return the value as a {@code long}
      * @throws NullPointerException if the key does not exist
      */
-    public long getLong(String key) {
+    public long getLong(@NotNull String key) {
         return this.jsonObject.get(key).getAsLong();
     }
 
@@ -581,7 +598,7 @@ public class JsonDocument {
      * @return the value as a {@code boolean}
      * @throws NullPointerException if the key does not exist
      */
-    public boolean getBoolean(String key) {
+    public boolean getBoolean(@NotNull String key) {
         return this.jsonObject.get(key).getAsBoolean();
     }
 
@@ -592,7 +609,8 @@ public class JsonDocument {
      * @return the value as a {@link String}
      * @throws NullPointerException if the key does not exist
      */
-    public String getString(String key) {
+    @NotNull
+    public String getString(@NotNull String key) {
         return this.jsonObject.get(key).getAsString();
     }
 
@@ -603,7 +621,7 @@ public class JsonDocument {
      * @return the value as a {@code char}
      * @throws NullPointerException if the key does not exist
      */
-    public char getChar(String key) {
+    public char getChar(@NotNull String key) {
         return this.jsonObject.get(key).getAsCharacter();
     }
 
@@ -614,7 +632,8 @@ public class JsonDocument {
      * @return the value as a {@link BigDecimal}
      * @throws NullPointerException if the key does not exist
      */
-    public BigDecimal getBigDecimal(String key) {
+    @NotNull
+    public BigDecimal getBigDecimal(@NotNull String key) {
         return this.jsonObject.get(key).getAsBigDecimal();
     }
 
@@ -625,7 +644,8 @@ public class JsonDocument {
      * @return the value as a {@link BigInteger}
      * @throws NullPointerException if the key does not exist
      */
-    public BigInteger getBigInteger(String key) {
+    @NotNull
+    public BigInteger getBigInteger(@NotNull String key) {
         return this.jsonObject.get(key).getAsBigInteger();
     }
 
@@ -637,7 +657,8 @@ public class JsonDocument {
      * @return the decoded bytes
      * @throws NullPointerException if the key does not exist
      */
-    public byte[] getBinary(String key) {
+    @NotNull
+    public byte[] getBinary(@NotNull String key) {
         return this.jsonObject.get(key).getAsBigInteger().toByteArray();
     }
 
@@ -650,7 +671,8 @@ public class JsonDocument {
      * @param <T>   the target type
      * @return the deserialized value, or {@code null} if the key does not exist
      */
-    public <T> T get(String key, Class<T> clazz) {
+    @Nullable
+    public <T> T get(@Nullable String key, @Nullable Class<T> clazz) {
         return this.get(key, gson, clazz);
     }
 
@@ -663,7 +685,8 @@ public class JsonDocument {
      * @param <T>  the target type
      * @return the deserialized value, or {@code null} if the key does not exist
      */
-    public <T> T get(String key, TypeToken<T> type) {
+    @Nullable
+    public <T> T get(@Nullable String key, @Nullable TypeToken<T> type) {
         return this.get(key, gson, type);
     }
 
@@ -673,7 +696,7 @@ public class JsonDocument {
      * @param path the destination file path
      * @return {@code true} if the write succeeded, {@code false} otherwise
      */
-    public boolean write(String path) {
+    public boolean write(@NotNull String path) {
         return this.write(Paths.get(path));
     }
 
@@ -684,7 +707,7 @@ public class JsonDocument {
      * @param path the destination path
      * @return {@code true} if the write succeeded, {@code false} otherwise
      */
-    public boolean write(Path path) {
+    public boolean write(@NotNull Path path) {
         FileProvider.getInstance().updateFile(path);
         try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(Files.newOutputStream(path), StandardCharsets.UTF_8)) {
             gson.toJson(jsonObject, outputStreamWriter);
@@ -701,7 +724,7 @@ public class JsonDocument {
      * @param backend the destination file
      * @return {@code true} if the write succeeded, {@code false} otherwise
      */
-    public boolean write(File backend) {
+    public boolean write(@NotNull File backend) {
         return this.write(backend.toPath());
     }
 
@@ -711,7 +734,7 @@ public class JsonDocument {
      * @param key the key to check
      * @return {@code true} if the key is present, {@code false} if it is {@code null} or absent
      */
-    public boolean contains(String key) {
+    public boolean contains(@Nullable String key) {
         return key != null && this.jsonObject.has(key);
     }
 
@@ -720,6 +743,7 @@ public class JsonDocument {
      *
      * @return a new set containing every key of this document
      */
+    @NotNull
     public Set<String> getKeys() {
         final Set<String> keys = new HashSet<>();
         for (Map.Entry<String, JsonElement> x : this.jsonObject.entrySet()) keys.add(x.getKey());
@@ -731,6 +755,7 @@ public class JsonDocument {
      *
      * @return a new {@link JsonDocument} with an independent copy of the underlying JSON object
      */
+    @NotNull
     public JsonDocument copy() {
         return new JsonDocument(this.jsonObject.deepCopy());
     }
@@ -740,6 +765,7 @@ public class JsonDocument {
      *
      * @return a new map containing every key/value pair of this document
      */
+    @NotNull
     public Map<String, JsonElement> asMap() {
         Map<String, JsonElement> out = new HashMap<>();
         for (Map.Entry<String, JsonElement> stringJsonElementEntry : this.jsonObject.entrySet()) {
@@ -760,7 +786,8 @@ public class JsonDocument {
      * @return the deserialized value, or {@code null} if any argument is {@code null} or the key
      * does not exist
      */
-    public <T> T get(String key, Gson gson, Class<T> clazz) {
+    @Nullable
+    public <T> T get(@Nullable String key, @Nullable Gson gson, @Nullable Class<T> clazz) {
 
         if (key == null || gson == null || clazz == null) return null;
         JsonElement jsonElement = get(key);
@@ -782,7 +809,8 @@ public class JsonDocument {
      * @return the deserialized value, or {@code null} if any argument is {@code null} or the key
      * does not exist
      */
-    public <T> T get(String key, Gson gson, TypeToken<T> type) {
+    @Nullable
+    public <T> T get(@Nullable String key, @Nullable Gson gson, @Nullable TypeToken<T> type) {
         if (key == null || gson == null || type == null) return null;
         if (!contains(key)) return null;
         JsonElement jsonElement = get(key);
@@ -803,7 +831,8 @@ public class JsonDocument {
      * @param <T>  the target type
      * @return the deserialized value, or {@code def} if the key is absent
      */
-    public <T> T get(String key, Type type, T def) {
+    @Nullable
+    public <T> T get(@NotNull String key, @NotNull Type type, @Nullable T def) {
         return this.get(key, type, def, value -> true);
     }
 
@@ -819,7 +848,8 @@ public class JsonDocument {
      * @param <T>       the target type
      * @return the deserialized value, or {@code def}
      */
-    public <T> T get(String key, Type type, T def, Predicate<T> predicate) {
+    @Nullable
+    public <T> T get(@NotNull String key, @NotNull Type type, @Nullable T def, @NotNull Predicate<T> predicate) {
 
         final JsonElement jsonElement = this.jsonObject.get(key);
         if (jsonElement == null) return def;
@@ -838,7 +868,8 @@ public class JsonDocument {
      * getXxx} accessors instead
      */
     @Deprecated
-    public JsonElement get(String key) {
+    @Nullable
+    public JsonElement get(@Nullable String key) {
         if (!contains(key)) return null;
         return this.jsonObject.get(key);
     }
@@ -870,7 +901,8 @@ public class JsonDocument {
      * @param input the path to read from
      * @return the parsed document, or an empty document if reading or parsing failed
      */
-    public static JsonDocument load(Path input) {
+    @NotNull
+    public static JsonDocument load(@NotNull Path input) {
 
         try {
             try (final InputStreamReader reader = new InputStreamReader(Files.newInputStream(input), StandardCharsets.UTF_8); final BufferedReader bufferedReader = new BufferedReader(reader)) {

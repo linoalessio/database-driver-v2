@@ -32,6 +32,8 @@ import com.google.gson.internal.bind.TypeAdapters;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import de.lino.database.json.JsonDocument;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 
@@ -52,7 +54,7 @@ public class JsonDocumentTypeAdapter extends TypeAdapter<JsonDocument> {
      * @param jsonConfiguration the document to serialize, may be {@code null}
      * @throws IOException if an I/O error occurs while writing
      */
-    public void write(JsonWriter jsonWriter, JsonDocument jsonConfiguration) throws IOException {
+    public void write(@NotNull JsonWriter jsonWriter, @Nullable JsonDocument jsonConfiguration) throws IOException {
         TypeAdapters.JSON_ELEMENT.write(jsonWriter, jsonConfiguration == null ? new JsonObject() : jsonConfiguration.getJsonObject());
     }
 
@@ -65,7 +67,8 @@ public class JsonDocumentTypeAdapter extends TypeAdapter<JsonDocument> {
      * value is absent or not a JSON object
      * @throws IOException if an I/O error occurs while reading
      */
-    public JsonDocument read(JsonReader jsonReader) throws IOException {
+    @Nullable
+    public JsonDocument read(@NotNull JsonReader jsonReader) throws IOException {
         JsonElement jsonElement = TypeAdapters.JSON_ELEMENT.read(jsonReader);
         return jsonElement != null && jsonElement.isJsonObject() ? new JsonDocument(jsonElement.getAsJsonObject()) : null;
     }

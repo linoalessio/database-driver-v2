@@ -50,6 +50,7 @@ public abstract class FileProvider {
      * {@code getInstance()} accessor.
      */
     @Getter
+    @Nullable
     protected static FileProvider instance;
 
     /**
@@ -67,42 +68,42 @@ public abstract class FileProvider {
      *
      * @param file the file to delete
      */
-    public abstract void deleteFile(File file);
+    public abstract void deleteFile(@NotNull File file);
 
     /**
      * Deletes the file at the given path, if it exists.
      *
      * @param file the path of the file to delete
      */
-    public abstract void deleteFile(Path file);
+    public abstract void deleteFile(@NotNull Path file);
 
     /**
      * Creates the given file, including any missing parent directories, if it does not exist yet.
      *
      * @param file the path of the file to create
      */
-    public abstract void createFile(Path file);
+    public abstract void createFile(@NotNull Path file);
 
     /**
      * Creates the given file, including any missing parent directories, if it does not exist yet.
      *
      * @param file the file to create
      */
-    public abstract void createFile(File file);
+    public abstract void createFile(@NotNull File file);
 
     /**
      * Recreates the given file, first deleting it if present and then creating it anew.
      *
      * @param file the path of the file to update
      */
-    public abstract void updateFile(Path file);
+    public abstract void updateFile(@NotNull Path file);
 
     /**
      * Recreates the given file, first deleting it if present and then creating it anew.
      *
      * @param file the file to update
      */
-    public abstract void updateFile(File file);
+    public abstract void updateFile(@NotNull File file);
 
     /**
      * Renames the given file.
@@ -110,7 +111,7 @@ public abstract class FileProvider {
      * @param file    the file to rename
      * @param newName the new name of the file
      */
-    public abstract void rename(File file, String newName);
+    public abstract void rename(@NotNull File file, @NotNull String newName);
 
     /**
      * Creates the given directory, including any missing parent directories.
@@ -125,7 +126,7 @@ public abstract class FileProvider {
      * @param from   the path of the file to copy
      * @param target the destination path
      */
-    public abstract void doCopy(String from, String target);
+    public abstract void doCopy(@NotNull String from, @NotNull String target);
 
     /**
      * Deletes every file directly contained in the given directory, without recursing into
@@ -133,14 +134,14 @@ public abstract class FileProvider {
      *
      * @param dirPath the directory whose files should be deleted
      */
-    public abstract void deleteAllFilesInDirectory(Path dirPath);
+    public abstract void deleteAllFilesInDirectory(@NotNull Path dirPath);
 
     /**
      * Recursively deletes the given directory and all of its contents.
      *
      * @param dirPath the directory to delete
      */
-    public abstract void deleteDirectory(Path dirPath);
+    public abstract void deleteDirectory(@NotNull Path dirPath);
 
     /**
      * Deletes the given directory (or file) if it exists, and then recreates it as an empty
@@ -148,7 +149,7 @@ public abstract class FileProvider {
      *
      * @param path the directory to recreate
      */
-    public abstract void recreateDirectory(Path path);
+    public abstract void recreateDirectory(@NotNull Path path);
 
     /**
      * Recursively copies a directory's contents to another location.
@@ -156,7 +157,7 @@ public abstract class FileProvider {
      * @param path   the source directory
      * @param target the destination directory
      */
-    public abstract void copyDirectory(Path path, Path target);
+    public abstract void copyDirectory(@NotNull Path path, @NotNull Path target);
 
     /**
      * Recursively copies a directory's contents to another location, skipping any file whose name
@@ -166,6 +167,6 @@ public abstract class FileProvider {
      * @param target        the destination directory
      * @param excludedFiles the file names to skip while copying
      */
-    public abstract void copyDirectory(Path path, Path target, Collection<String> excludedFiles);
+    public abstract void copyDirectory(@NotNull Path path, @NotNull Path target, @NotNull Collection<String> excludedFiles);
 
 }
