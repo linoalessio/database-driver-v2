@@ -28,6 +28,8 @@ package de.lino.database.provider.entity;
 import de.lino.database.json.JsonDocument;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * A single record stored inside a {@link de.lino.database.provider.DatabaseSection}, consisting
@@ -44,17 +46,20 @@ public class DatabaseEntry {
     /**
      * The primary key that uniquely identifies this entry within its section.
      */
+    @NotNull
     private final String id;
 
     /**
      * The full document backing this entry, including its {@code "data"} envelope.
      */
+    @NotNull
     private final JsonDocument document;
 
     /**
      * Contains the MetaData of the entry
      * @return JsonDocument
      */
+    @Nullable
     public JsonDocument getMetaData() {
         return this.document.getMetaData("data");
     }

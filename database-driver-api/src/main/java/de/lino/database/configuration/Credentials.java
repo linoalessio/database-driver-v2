@@ -29,6 +29,7 @@ import com.google.gson.JsonObject;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.json.parser.DocumentJsonParser;
 import lombok.Getter;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -86,7 +87,7 @@ public class Credentials {
      * @param database: database name
      * @param fileRepository: repository where the file database shall save their data, only to use when JsonDatabaseProvider used
      */
-    public Credentials(Path configDestination, String address, String userName, String password, int port, String database, Path fileRepository) {
+    public Credentials(@NotNull Path configDestination, @NotNull String address, @NotNull String userName, @NotNull String password, int port, @NotNull String database, @NotNull Path fileRepository) {
 
         this.configDestination = configDestination;
 
@@ -141,7 +142,7 @@ public class Credentials {
      * @param port              database port
      * @param database          database name
      */
-    public Credentials(Path configDestination, String address, String userName, String password, int port, String database) {
+    public Credentials(@NotNull Path configDestination, @NotNull String address, @NotNull String userName, @NotNull String password, int port, @NotNull String database) {
         this(configDestination, address, userName, password, port, database, Paths.get(UNKNOWN.toString()));
     }
 
@@ -154,7 +155,7 @@ public class Credentials {
      * @param configDestination configuration file where the credentials will be saved
      * @param fileRepository    repository where the file database shall save its data
      */
-    public Credentials(Path configDestination, Path fileRepository) {
+    public Credentials(@NotNull Path configDestination, @NotNull Path fileRepository) {
         this(configDestination, UNKNOWN.toString(), UNKNOWN.toString(), UNKNOWN.toString(), -1, UNKNOWN.toString(), fileRepository);
     }
 

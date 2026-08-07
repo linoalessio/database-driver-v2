@@ -1,5 +1,7 @@
 package de.lino.database.exception;
 
+import org.jetbrains.annotations.NotNull;
+
 /*
  * MIT License
  *
@@ -37,7 +39,7 @@ public class NoSuchDataFound extends RuntimeException {
      *
      * @param id the primary key of the affected record
      */
-    public NoSuchDataFound(String id) {
+    public NoSuchDataFound(@NotNull String id) {
         super("No such data found in document");
     }
 

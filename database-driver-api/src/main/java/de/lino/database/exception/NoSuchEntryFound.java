@@ -1,5 +1,7 @@
 package de.lino.database.exception;
 
+import org.jetbrains.annotations.NotNull;
+
 /*
  * MIT License
  *
@@ -37,7 +39,7 @@ public class NoSuchEntryFound extends RuntimeException {
      *
      * @param id the primary key that could not be found
      */
-    public NoSuchEntryFound(String id) {
+    public NoSuchEntryFound(@NotNull String id) {
         super("No such entry found with id='" + id + "'");
     }
 

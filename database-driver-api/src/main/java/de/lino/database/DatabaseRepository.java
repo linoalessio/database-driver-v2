@@ -30,9 +30,9 @@ import de.lino.database.provider.DatabaseProvider;
 import de.lino.database.provider.DatabaseType;
 import de.lino.database.utils.Pair;
 import lombok.Getter;
-import lombok.NonNull;
 import lombok.SneakyThrows;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.List;
@@ -60,6 +60,7 @@ public abstract class DatabaseRepository {
      * {@code getInstance()} accessor.
      */
     @Getter
+    @Nullable
     private static DatabaseRepository instance;
 
     /**
@@ -68,7 +69,7 @@ public abstract class DatabaseRepository {
      *
      * @param instance the repository instance to install
      */
-    protected static void setInstance(DatabaseRepository instance) {
+    protected static void setInstance(@NotNull DatabaseRepository instance) {
         DatabaseRepository.instance = instance;
     }
 
@@ -103,7 +104,7 @@ public abstract class DatabaseRepository {
      * @return a {@link Pair} of the two providers involved, the first one being the source, the
      * second one being the destination
      */
-    public abstract Pair<DatabaseProvider, DatabaseProvider> convert(@NotNull int sourceId, @NotNull int targetId);
+    public abstract Pair<DatabaseProvider, DatabaseProvider> convert(int sourceId, int targetId);
 
     /**
      * Get a specific database provider by id.
@@ -112,7 +113,7 @@ public abstract class DatabaseRepository {
      * @return an {@link Optional} containing the matching {@link DatabaseProvider}, or empty if
      * no provider is registered under the given id
      */
-    public abstract Optional<DatabaseProvider> findDatabaseProviderById(@NotNull int id);
+    public abstract Optional<DatabaseProvider> findDatabaseProviderById(int id);
 
     /**
      * Register a new database provider.
@@ -122,7 +123,7 @@ public abstract class DatabaseRepository {
      * @param credentials  login credentials
      * @return the newly created and registered {@link DatabaseProvider}
      */
-    public abstract DatabaseProvider registerDatabaseProvider(@NotNull int id, @NotNull DatabaseType databaseType, @NotNull Credentials credentials);
+    public abstract DatabaseProvider registerDatabaseProvider(int id, @NotNull DatabaseType databaseType, @NotNull Credentials credentials);
 
     /**
      * Shutdown a specific database provider and unregister it from the repository.
@@ -130,7 +131,7 @@ public abstract class DatabaseRepository {
      * @param id database provider id
      * @return the {@link DatabaseProvider} that was shut down and unregistered
      */
-    public abstract DatabaseProvider unregisterDatabaseProvider(@NotNull int id);
+    public abstract DatabaseProvider unregisterDatabaseProvider(int id);
 
 
     /**
@@ -152,7 +153,7 @@ public abstract class DatabaseRepository {
      * {@link DatabaseProvider} of the given type
      */
     @UnmodifiableView
-    public CompletableFuture<List<DatabaseProvider>> getDatabaseProviderPoolAsync(@NonNull DatabaseType databaseType) {
+    public CompletableFuture<List<DatabaseProvider>> getDatabaseProviderPoolAsync(@NotNull DatabaseType databaseType) {
         return CompletableFuture.supplyAsync(() -> this.getDatabaseProviderPool(databaseType));
     }
 
@@ -173,7 +174,7 @@ public abstract class DatabaseRepository {
      * @return a {@link CompletableFuture} resolving to a {@link Pair} of the source and
      * destination providers
      */
-    public CompletableFuture<Pair<DatabaseProvider, DatabaseProvider>> convertAsync(@NotNull int sourceId, @NotNull int targetId) {
+    public CompletableFuture<Pair<DatabaseProvider, DatabaseProvider>> convertAsync(int sourceId, int targetId) {
         return CompletableFuture.supplyAsync(() -> convert(sourceId, targetId));
     }
 
@@ -199,7 +200,7 @@ public abstract class DatabaseRepository {
      * @return a {@link CompletableFuture} resolving to the newly created and registered
      * {@link DatabaseProvider}
      */
-    public CompletableFuture<DatabaseProvider> registerDatabaseProviderAsync(@NotNull int id, @NotNull DatabaseType databaseType, @NotNull Credentials credentials) {
+    public CompletableFuture<DatabaseProvider> registerDatabaseProviderAsync(int id, @NotNull DatabaseType databaseType, @NotNull Credentials credentials) {
         return CompletableFuture.supplyAsync(() -> registerDatabaseProvider(id, databaseType, credentials));
     }
 
@@ -210,7 +211,7 @@ public abstract class DatabaseRepository {
      * @return a {@link CompletableFuture} resolving to the {@link DatabaseProvider} that was shut
      * down and unregistered
      */
-    public CompletableFuture<DatabaseProvider> unregisterDatabaseProviderAsync(@NotNull int id) {
+    public CompletableFuture<DatabaseProvider> unregisterDatabaseProviderAsync(int id) {
         return CompletableFuture.supplyAsync(() -> unregisterDatabaseProvider(id));
     }
 

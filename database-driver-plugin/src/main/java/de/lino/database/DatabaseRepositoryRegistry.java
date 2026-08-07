@@ -101,7 +101,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
     }
 
     @Override
-    public Pair<DatabaseProvider, DatabaseProvider> convert(@NotNull int sourceId, @NotNull int targetId) {
+    public Pair<DatabaseProvider, DatabaseProvider> convert(int sourceId, int targetId) {
 
         final DatabaseType sourceType = this.databaseProviders.get(sourceId).first();
         final DatabaseProvider source = this.databaseProviders.get(sourceId).second();
@@ -130,13 +130,13 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
     }
 
     @Override
-    public Optional<DatabaseProvider> findDatabaseProviderById(@NotNull int id) {
+    public Optional<DatabaseProvider> findDatabaseProviderById(int id) {
         final Pair<DatabaseType, DatabaseProvider> pair = this.databaseProviders.get(id);
         return pair == null ? Optional.empty() : Optional.of(pair.second());
     }
 
     @Override
-    public DatabaseProvider registerDatabaseProvider(@NotNull int id, @NotNull DatabaseType databaseType, @NotNull Credentials credentials) {
+    public DatabaseProvider registerDatabaseProvider(int id, @NotNull DatabaseType databaseType, @NotNull Credentials credentials) {
 
         if (this.databaseProviders.containsKey(id)) throw new IllegalStateException("Database Provider with id #" + id + " already exists");
 
@@ -163,7 +163,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
     }
 
     @Override
-    public DatabaseProvider unregisterDatabaseProvider(@NotNull int id) {
+    public DatabaseProvider unregisterDatabaseProvider(int id) {
 
         final Pair<DatabaseType, DatabaseProvider> pair = this.databaseProviders.get(id);
         if (pair == null) throw new IllegalStateException("Database Provider with id #" + id + " does not exist");
