@@ -127,7 +127,7 @@ public class SQLExecution {
 
         switch (databaseType) {
 
-            case MY_SQL, POSTGRE_SQL, MARIA_DB, MONGO_DB, RETHINK_DB -> {
+            case MY_SQL, POSTGRES_SQL, MARIA_DB, MONGO_DB, RETHINK_DB -> {
                 hikariConfig.setJdbcUrl(String.format(ARGUMENTS, databaseType.getType(), credentials.getAddress(), credentials.getPort(), credentials.getDatabase()));
                 hikariConfig.setDriverClassName(databaseType.getDriverClass());
                 hikariConfig.setUsername(credentials.getUserName());

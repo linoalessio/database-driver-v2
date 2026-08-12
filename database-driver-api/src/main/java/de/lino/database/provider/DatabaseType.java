@@ -45,7 +45,7 @@ public enum DatabaseType {
     /**
      * PostgreSQL, accessed through its JDBC driver.
      */
-    POSTGRE_SQL("postgresql", "org.postgresql.Driver"),
+    POSTGRES_SQL("postgresql", "org.postgresql.Driver"),
 
     /**
      * H2, accessed through its JDBC driver.

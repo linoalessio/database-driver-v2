@@ -146,7 +146,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
             case JSON -> new JsonDatabaseProvider(credentials);
             case H2_DB -> new H2DatabaseProvider(credentials);
             case MONGO_DB -> new MongoDBDatabaseProvider(credentials);
-            case POSTGRE_SQL -> new PostgreSQLDatabaseProvider(credentials);
+            case POSTGRES_SQL -> new PostgreSQLDatabaseProvider(credentials);
             case SQLITE -> new SQLiteDatabaseProvider(credentials);
             case MARIA_DB -> new MariaDBDatabaseProvider(credentials);
             case RETHINK_DB -> new RethinkDBDatabaseProvider(credentials);
