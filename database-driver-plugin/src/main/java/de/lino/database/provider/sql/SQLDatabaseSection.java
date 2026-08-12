@@ -65,7 +65,7 @@ public class SQLDatabaseSection implements DatabaseSection {
         String sqlStatement = "";
         switch (databaseType) {
 
-            case POSTGRE_SQL -> sqlStatement = "BYTEA";
+            case POSTGRES_SQL -> sqlStatement = "BYTEA";
             case MY_SQL, MARIA_DB ->  sqlStatement = "LONGBLOB";
             case SQLITE, H2_DB, ORACLE, APACHE_DERBY ->  sqlStatement = "BLOB";
             case MICROSOFT_SQL_SERVER ->  sqlStatement = "VARBINARY(MAX)";

@@ -36,7 +36,7 @@ import org.jetbrains.annotations.NotNull;
 public class PostgreSQLDatabaseProvider extends SQLDatabaseProvider {
 
     public PostgreSQLDatabaseProvider(@NotNull Credentials credentials) {
-        super(DatabaseType.POSTGRE_SQL, new SQLExecution(DatabaseType.POSTGRE_SQL, credentials));
+        super(DatabaseType.POSTGRES_SQL, new SQLExecution(DatabaseType.POSTGRES_SQL, credentials));
     }
     
 }
