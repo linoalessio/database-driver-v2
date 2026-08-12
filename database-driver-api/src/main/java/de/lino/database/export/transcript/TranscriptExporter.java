@@ -1,0 +1,46 @@
+package de.lino.database.export.transcript;
+
+import de.lino.database.export.data.DataExporter;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
+
+/**
+ * The shared shape of a grouped, "transcript-style" exporter, e.g.
+ * {@link ExportCoordinator.TranscriptPDFExporter} or
+ * {@link ExportCoordinator.TranscriptExcelExporter}: writing an already-grouped,
+ * already-formatted data set - {@link TranscriptSection}s under a shared set of column
+ * headers, plus an optional closing {@link TranscriptLegendEntry} legend - to a file.
+ * The transcript counterpart of {@link DataExporter}'s flat-table contract.
+ *
+ * <p>{@link ExportCoordinator.TranscriptPDFExporter} and
+ * {@link ExportCoordinator.TranscriptExcelExporter} implement this interface
+ * directly; being a {@link FunctionalInterface}, it can just as well be satisfied with
+ * a lambda or method reference for a one-off implementation.
+ */
+@FunctionalInterface
+public interface TranscriptExporter {
+
+    /**
+     * Writes {@code sections} to a file at {@code output}, one column per entry in
+     * {@code columnHeaders}, with an optional closing legend.
+     *
+     * @param documentTitle the document title shown on every page/sheet
+     * @param columnHeaders the column headers, in display order
+     * @param sections the grouped rows to write, in the order they should appear
+     * @param legendTitle the closing legend's heading; ignored if {@code legendEntries} is empty
+     * @param legendEntries the closing legend's entries, or empty to omit it
+     * @param output the file path the export is written to; overwritten if it already exists
+     * @throws IOException if the export cannot be written to {@code output}
+     */
+    void export(
+            String documentTitle,
+            List<String> columnHeaders,
+            List<TranscriptSection> sections,
+            String legendTitle,
+            List<TranscriptLegendEntry> legendEntries,
+            Path output
+    ) throws IOException;
+
+}

@@ -2,7 +2,7 @@
 
 ![Java](https://img.shields.io/badge/Java-17%2B-orange)
 ![Build](https://img.shields.io/badge/Build-Maven-C71A36)
-![Version](https://img.shields.io/badge/Version-1.1.2-blue)
+![Version](https://img.shields.io/badge/Version-1.2.0-blue)
 
 DatabaseDriver is a management system for multiple SQL and NoSQL database types, controlled
 through a single, unified interface. Instead of learning a separate API for every backend, you
@@ -61,7 +61,7 @@ git clone https://github.com/linoalessio/database-driver-v2.git
 ```
 
 Or add it as a Maven dependency (replace `%version%` with the version you want to use, currently
-`1.1.2`). `database-driver-api` gives you the interfaces to code against; `database-driver-plugin`
+`1.2.0`). `database-driver-api` gives you the interfaces to code against; `database-driver-plugin`
 provides the actual implementations and must be present on the runtime classpath. The artifacts
 are published to **GitHub Packages**, not Maven Central, so two extra steps are required before
 the dependencies below will resolve.
@@ -285,6 +285,81 @@ final Credentials json = new Credentials(Paths.get("CONFIG_PATH"), Paths.get("DA
 `Credentials` persists whatever you pass in to `configDestination` as JSON the first time it runs;
 on every subsequent run it reads the existing file back instead, so the constructor arguments
 other than `configDestination` are only used to seed that file once.
+
+--- ---
+
+## Using `ExportCoordinator`
+
+Applications built on this driver often need to export their data — per-table PDF/Excel
+sheets, grouped transcripts, or a full backup of the local database — without that
+logic depending on any one application's entities. The `export` package follows the
+same api/plugin split as the rest of this driver (see [Project Structure](#project-structure)):
+`database-driver-api` ships only the contracts —
+[`DataExporter`](database-driver-api/src/main/java/de/lino/database/export/data/DataExporter.java) (flat tables),
+[`TranscriptExporter`](database-driver-api/src/main/java/de/lino/database/export/transcript/TranscriptExporter.java) (grouped, section-based documents),
+[`ArchiveExporter`](database-driver-api/src/main/java/de/lino/database/export/archiv/ArchiveExporter.java) (whole-directory archives) and
+[`ExporterInjector`](database-driver-api/src/main/java/de/lino/database/export/ExporterInjector.java) — while
+`database-driver-plugin` ships the single, application-agnostic access point that wires
+them together,
+[`ExportCoordinator`](database-driver-plugin/src/main/java/de/lino/database/export/ExportCoordinator.java).
+It never constructs a concrete exporter itself; a caller hands in whichever
+implementation it wants through `ExporterInjector`'s setter methods, a.k.a.
+**interface injection**. `ExportCoordinator` bundles three default implementations as
+nested classes (`TranscriptPDFExporter`, `TranscriptExcelExporter`,
+`DirectoryZipExporter`), but nothing about the coordination logic itself is specific to
+any one application — a caller can inject its own `DataExporter`/`TranscriptExporter`/
+`ArchiveExporter` just as easily, from this project or another one entirely. See
+[`university-driver`](https://github.com/linoalessio/university-driver) for a real
+consumer, binding `DirectoryZipExporter` to its own local database directory.
+
+```java
+import de.lino.database.export.ExportCoordinator;
+import de.lino.database.export.transcript.TranscriptLegendEntry;
+import de.lino.database.export.transcript.TranscriptSection;
+
+import java.nio.file.Path;
+import java.util.List;
+
+// One section per group; each inner list is one row's cell values.
+final List<TranscriptSection> sections = List.of(
+        new TranscriptSection("WiSe 24/25", List.of(
+                List.of("#1", "Grundlagen ML", "1.7", "bestanden"),
+                List.of("#2", "Datenbanksysteme", "2.3", "bestanden")
+        )),
+        new TranscriptSection("SoSe 25", List.of(
+                List.of("#3", "IAP Labor", "1.3", "bestanden")
+        ))
+);
+
+final List<TranscriptLegendEntry> gradingScale = List.of(
+        new TranscriptLegendEntry("1.0 – 1.5", "sehr gut (excellent)"),
+        new TranscriptLegendEntry("1.7 – 2.5", "gut (good)")
+);
+
+final ExportCoordinator coordinator = new ExportCoordinator();
+
+// Inject a default implementation - or supply your own DataExporter/
+// TranscriptExporter/ArchiveExporter instead, this class doesn't care which.
+coordinator.injectTranscriptExporter(new ExportCoordinator.TranscriptPDFExporter());
+
+// DirectoryZipExporter is bound to a source directory (and, optionally, a hook run
+// beforehand, e.g. to flush an application's in-memory cache to disk first) - nothing
+// about it is specific to this driver's own local database directory.
+coordinator.injectArchiveExporter(new ExportCoordinator.DirectoryZipExporter(Path.of("/var/data/app")));
+
+// Grouped, transcript-style PDF - swap in TranscriptExcelExporter for a .xlsx instead.
+coordinator.exportTranscript(
+        "Transcript",
+        List.of("Id", "Module", "Grade", "Status"),
+        sections,
+        "Grading Scale",
+        gradingScale,
+        Path.of("transcript.pdf")
+);
+
+// A full, format-agnostic backup of the injected source directory, zipped to one file.
+coordinator.exportArchive(Path.of("backup.zip"));
+```
 
 --- ---
 
