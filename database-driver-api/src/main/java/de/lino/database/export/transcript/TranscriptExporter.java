@@ -31,6 +31,7 @@ public interface TranscriptExporter {
      * @param sections the grouped rows to write, in the order they should appear
      * @param legendTitle the closing legend's heading; ignored if {@code legendEntries} is empty
      * @param legendEntries the closing legend's entries, or empty to omit it
+     * @param pageLayout the page size and orientation to render the export at
      * @param output the file path the export is written to; overwritten if it already exists
      * @throws IOException if the export cannot be written to {@code output}
      */
@@ -40,6 +41,7 @@ public interface TranscriptExporter {
             List<TranscriptSection> sections,
             String legendTitle,
             List<TranscriptLegendEntry> legendEntries,
+            PageLayout pageLayout,
             Path output
     ) throws IOException;
 

@@ -2,6 +2,9 @@ package de.lino.database.export;
 
 import de.lino.database.export.archiv.ArchiveExporter;
 import de.lino.database.export.data.DataExporter;
+import de.lino.database.export.transcript.PageFormat;
+import de.lino.database.export.transcript.PageLayout;
+import de.lino.database.export.transcript.PageOrientation;
 import de.lino.database.export.transcript.TranscriptExporter;
 import de.lino.database.export.transcript.TranscriptLegendEntry;
 import de.lino.database.export.transcript.TranscriptSection;
@@ -65,7 +68,7 @@ import java.util.zip.ZipOutputStream;
  * coordinator.injectTranscriptExporter(new ExportCoordinator.TranscriptPDFExporter()); // or new TranscriptExcelExporter()
  * coordinator.injectArchiveExporter(new ExportCoordinator.DirectoryZipExporter(Path.of("/var/data/app")));
  *
- * coordinator.exportTranscript("Transcript", headers, sections, "Grading Scale", legend, Path.of("transcript.xlsx"));
+ * coordinator.exportTranscript("Transcript", headers, sections, "Grading Scale", legend, PageLayout.DEFAULT, Path.of("transcript.xlsx"));
  * coordinator.exportArchive(Path.of("backup.zip"));
  * }</pre>
  *
@@ -150,18 +153,19 @@ public final class ExportCoordinator implements ExporterInjector {
      * @param sections the grouped rows to write, in the order they should appear
      * @param legendTitle the closing legend's heading; ignored if {@code legendEntries} is empty
      * @param legendEntries the closing legend's entries, or empty to omit it
+     * @param pageLayout the page size and orientation to render the export at
      * @param output the file path the export is written to; overwritten if it already exists
      * @throws IOException if the export cannot be written to {@code output}
      * @throws IllegalStateException if no {@link TranscriptExporter} has been injected yet
      */
     public void exportTranscript(
             final String documentTitle, final List<String> columnHeaders, final List<TranscriptSection> sections,
-            final String legendTitle, final List<TranscriptLegendEntry> legendEntries, final Path output
+            final String legendTitle, final List<TranscriptLegendEntry> legendEntries, final PageLayout pageLayout, final Path output
     ) throws IOException {
 
         requireInjected(transcriptExporter, TranscriptExporter.class);
 
-        transcriptExporter.export(documentTitle, columnHeaders, sections, legendTitle, legendEntries, output);
+        transcriptExporter.export(documentTitle, columnHeaders, sections, legendTitle, legendEntries, pageLayout, output);
 
     }
 
@@ -334,6 +338,7 @@ public final class ExportCoordinator implements ExporterInjector {
          * @param sections the grouped rows to write, in the order they should appear
          * @param legendTitle the closing legend page's heading; ignored if {@code legendEntries} is empty
          * @param legendEntries the closing legend page's entries, or empty to omit it
+         * @param pageLayout the page size and orientation every page is rendered at
          * @param output the file path the PDF is written to; overwritten if it already exists
          * @throws IOException if the PDF cannot be written to {@code output}
          * @throws NullPointerException if any argument is {@code null}
@@ -346,6 +351,7 @@ public final class ExportCoordinator implements ExporterInjector {
                 final List<TranscriptSection> sections,
                 final String legendTitle,
                 final List<TranscriptLegendEntry> legendEntries,
+                final PageLayout pageLayout,
                 final Path output
         ) throws IOException {
 
@@ -353,6 +359,7 @@ public final class ExportCoordinator implements ExporterInjector {
             Objects.requireNonNull(columnHeaders, "@TranscriptPDFExporter.export: columnHeaders must not be null");
             Objects.requireNonNull(sections, "@TranscriptPDFExporter.export: sections must not be null");
             Objects.requireNonNull(legendEntries, "@TranscriptPDFExporter.export: legendEntries must not be null");
+            Objects.requireNonNull(pageLayout, "@TranscriptPDFExporter.export: pageLayout must not be null");
             Objects.requireNonNull(output, "@TranscriptPDFExporter.export: output must not be null");
 
             if (columnHeaders.isEmpty()) throw new IllegalArgumentException("@TranscriptPDFExporter.export: columnHeaders must not be empty");
@@ -364,10 +371,11 @@ public final class ExportCoordinator implements ExporterInjector {
             final PDFont cellFont = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
             final PDFont sectionFont = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
 
-            final float contentWidth = PDRectangle.A4.getWidth() - MARGIN * 2;
+            final PDRectangle pageSize = resolvePageSize(pageLayout);
+            final float contentWidth = pageSize.getWidth() - MARGIN * 2;
             final float[] columnWidths = computeColumnWidths(columnHeaders, sections, headerFont, cellFont, contentWidth);
 
-            final float tableTop = PDRectangle.A4.getHeight() - MARGIN - BANNER_HEIGHT - SECTION_GAP;
+            final float tableTop = pageSize.getHeight() - MARGIN - BANNER_HEIGHT - SECTION_GAP;
             final float tableBottom = MARGIN + FOOTER_HEIGHT;
             final float availableHeight = tableTop - tableBottom - ROW_HEIGHT;
 
@@ -379,17 +387,39 @@ public final class ExportCoordinator implements ExporterInjector {
             try (PDDocument document = new PDDocument()) {
 
                 for (int i = 0; i < pages.size(); i++) {
-                    renderTablePage(document, documentTitle, columnHeaders, columnWidths, pages.get(i),
+                    renderTablePage(document, pageSize, documentTitle, columnHeaders, columnWidths, pages.get(i),
                             i + 1, totalPages, titleFont, headerFont, cellFont, sectionFont);
                 }
 
                 if (hasLegend) {
-                    renderLegendPage(document, documentTitle, legendTitle, legendEntries, totalPages, totalPages, titleFont, cellFont);
+                    renderLegendPage(document, pageSize, documentTitle, legendTitle, legendEntries, totalPages, totalPages, titleFont, cellFont);
                 }
 
                 document.save(outputPath.toFile());
 
             }
+
+        }
+
+        /**
+         * Resolves {@code pageLayout} to the {@link PDRectangle} its page size and
+         * orientation describe, swapping width and height of the underlying
+         * {@link PageFormat}'s portrait rectangle for {@link PageOrientation#LANDSCAPE}.
+         *
+         * @param pageLayout the page size and orientation to resolve
+         * @return the resulting page rectangle
+         */
+        private static PDRectangle resolvePageSize(final PageLayout pageLayout) {
+
+            final PDRectangle portrait = switch (pageLayout.format()) {
+                case A3 -> PDRectangle.A3;
+                case A4 -> PDRectangle.A4;
+                case A5 -> PDRectangle.A5;
+            };
+
+            return pageLayout.orientation() == PageOrientation.LANDSCAPE
+                    ? new PDRectangle(portrait.getHeight(), portrait.getWidth())
+                    : portrait;
 
         }
 
@@ -555,6 +585,7 @@ public final class ExportCoordinator implements ExporterInjector {
          * many of {@code lines} as were assigned to this page, and the page footer.
          *
          * @param document the document to append the page to
+         * @param pageSize the page size every page is rendered at
          * @param documentTitle the banner's title text
          * @param headers the column headers
          * @param columnWidths each column's width, in the same order as {@code headers}
@@ -568,18 +599,19 @@ public final class ExportCoordinator implements ExporterInjector {
          * @throws IOException if the page cannot be written to {@code document}
          */
         private static void renderTablePage(
-                final PDDocument document, final String documentTitle, final List<String> headers, final float[] columnWidths,
+                final PDDocument document, final PDRectangle pageSize, final String documentTitle, final List<String> headers, final float[] columnWidths,
                 final List<Line> lines, final int pageNumber, final int totalPages,
                 final PDFont titleFont, final PDFont headerFont, final PDFont cellFont, final PDFont sectionFont
         ) throws IOException {
 
-            final PDPage page = new PDPage(PDRectangle.A4);
+            final PDPage page = new PDPage(pageSize);
             document.addPage(page);
 
             try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
 
+                final float contentWidth = page.getMediaBox().getWidth() - MARGIN * 2;
                 float y = page.getMediaBox().getHeight() - MARGIN;
-                y = writeBanner(stream, titleFont, y, documentTitle, pageNumber, totalPages);
+                y = writeBanner(stream, titleFont, y, contentWidth, documentTitle, pageNumber, totalPages);
                 y -= SECTION_GAP;
                 y = writeHeaderRow(stream, headerFont, y, headers, columnWidths);
 
@@ -617,6 +649,7 @@ public final class ExportCoordinator implements ExporterInjector {
          * that would drift depending on how wide each label happens to render.
          *
          * @param document the document to append the page to
+         * @param pageSize the page size every page is rendered at
          * @param documentTitle the banner's title text
          * @param legendTitle the legend section's own heading
          * @param legendEntries the legend's entries, in order
@@ -627,17 +660,18 @@ public final class ExportCoordinator implements ExporterInjector {
          * @throws IOException if the page cannot be written to {@code document}
          */
         private static void renderLegendPage(
-                final PDDocument document, final String documentTitle, final String legendTitle, final List<TranscriptLegendEntry> legendEntries,
+                final PDDocument document, final PDRectangle pageSize, final String documentTitle, final String legendTitle, final List<TranscriptLegendEntry> legendEntries,
                 final int pageNumber, final int totalPages, final PDFont titleFont, final PDFont textFont
         ) throws IOException {
 
-            final PDPage page = new PDPage(PDRectangle.A4);
+            final PDPage page = new PDPage(pageSize);
             document.addPage(page);
 
             try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
 
+                final float contentWidth = page.getMediaBox().getWidth() - MARGIN * 2;
                 float y = page.getMediaBox().getHeight() - MARGIN;
-                y = writeBanner(stream, titleFont, y, documentTitle, pageNumber, totalPages);
+                y = writeBanner(stream, titleFont, y, contentWidth, documentTitle, pageNumber, totalPages);
                 y -= SECTION_GAP * 3;
 
                 writeText(stream, titleFont, SECTION_FONT_SIZE + 1, MARGIN, y, legendTitle);
@@ -668,6 +702,7 @@ public final class ExportCoordinator implements ExporterInjector {
          * @param stream the content stream to write to
          * @param font the font to render the banner text with
          * @param y the vertical offset of the banner's top edge
+         * @param contentWidth the width of the banner, spanning the page's content area
          * @param title the banner's title text
          * @param pageNumber this page's 1-based page number
          * @param totalPages the document's total page count
@@ -675,11 +710,10 @@ public final class ExportCoordinator implements ExporterInjector {
          * @throws IOException if the banner cannot be written to {@code stream}
          */
         private static float writeBanner(
-                final PDPageContentStream stream, final PDFont font, final float y,
+                final PDPageContentStream stream, final PDFont font, final float y, final float contentWidth,
                 final String title, final int pageNumber, final int totalPages
         ) throws IOException {
 
-            final float contentWidth = PDRectangle.A4.getWidth() - MARGIN * 2;
             final float bannerBottom = y - BANNER_HEIGHT;
 
             stream.setNonStrokingColor(BANNER_FILL);
@@ -971,6 +1005,7 @@ public final class ExportCoordinator implements ExporterInjector {
          * @param sections the grouped rows to write, in the order they should appear
          * @param legendTitle the legend sheet's name; ignored if {@code legendEntries} is empty
          * @param legendEntries the legend's entries, or empty to omit the legend sheet
+         * @param pageLayout the page size and orientation applied to every sheet's print setup
          * @param output the file path the workbook is written to; overwritten if it already exists
          * @throws IOException if the workbook cannot be written to {@code output}
          * @throws NullPointerException if any argument is {@code null}
@@ -983,6 +1018,7 @@ public final class ExportCoordinator implements ExporterInjector {
                 final List<TranscriptSection> sections,
                 final String legendTitle,
                 final List<TranscriptLegendEntry> legendEntries,
+                final PageLayout pageLayout,
                 final Path output
         ) throws IOException {
 
@@ -990,6 +1026,7 @@ public final class ExportCoordinator implements ExporterInjector {
             Objects.requireNonNull(columnHeaders, "@TranscriptExcelExporter.export: columnHeaders must not be null");
             Objects.requireNonNull(sections, "@TranscriptExcelExporter.export: sections must not be null");
             Objects.requireNonNull(legendEntries, "@TranscriptExcelExporter.export: legendEntries must not be null");
+            Objects.requireNonNull(pageLayout, "@TranscriptExcelExporter.export: pageLayout must not be null");
             Objects.requireNonNull(output, "@TranscriptExcelExporter.export: output must not be null");
 
             if (columnHeaders.isEmpty()) throw new IllegalArgumentException("@TranscriptExcelExporter.export: columnHeaders must not be empty");
@@ -998,10 +1035,10 @@ public final class ExportCoordinator implements ExporterInjector {
 
             try (XSSFWorkbook workbook = new XSSFWorkbook()) {
 
-                writeTranscriptSheet(workbook, documentTitle, columnHeaders, sections);
+                writeTranscriptSheet(workbook, documentTitle, columnHeaders, sections, pageLayout);
 
                 if (!legendEntries.isEmpty()) {
-                    writeLegendSheet(workbook, legendTitle, legendEntries);
+                    writeLegendSheet(workbook, legendTitle, legendEntries, pageLayout);
                 }
 
                 try (OutputStream out = Files.newOutputStream(outputPath)) {
@@ -1021,12 +1058,15 @@ public final class ExportCoordinator implements ExporterInjector {
          * @param title the sheet's own name
          * @param headers the column headers, in display order
          * @param sections the grouped rows to write, in the order they should appear
+         * @param pageLayout the page size and orientation applied to the sheet's print setup
          */
         private static void writeTranscriptSheet(
-                final XSSFWorkbook workbook, final String title, final List<String> headers, final List<TranscriptSection> sections
+                final XSSFWorkbook workbook, final String title, final List<String> headers, final List<TranscriptSection> sections,
+                final PageLayout pageLayout
         ) {
 
             final Sheet sheet = workbook.createSheet(sheetName(title));
+            applyPrintSetup(sheet, pageLayout);
 
             final XSSFCellStyle headerStyle = createRowStyle(workbook, true, HEADER_FILL);
             final XSSFCellStyle sectionStyle = createRowStyle(workbook, true, HEADER_FILL);
@@ -1070,16 +1110,42 @@ public final class ExportCoordinator implements ExporterInjector {
         }
 
         /**
+         * Applies {@code pageLayout}'s page size and orientation to {@code sheet}'s print
+         * setup, the Excel counterpart of the page rectangle {@link TranscriptPDFExporter}
+         * renders each page at.
+         *
+         * @param sheet the sheet to configure
+         * @param pageLayout the page size and orientation to apply
+         */
+        private static void applyPrintSetup(final Sheet sheet, final PageLayout pageLayout) {
+
+            final short paperSize = switch (pageLayout.format()) {
+                case A3 -> PrintSetup.A3_PAPERSIZE;
+                case A4 -> PrintSetup.A4_PAPERSIZE;
+                case A5 -> PrintSetup.A5_PAPERSIZE;
+            };
+
+            final PrintSetup printSetup = sheet.getPrintSetup();
+            printSetup.setPaperSize(paperSize);
+            printSetup.setLandscape(pageLayout.orientation() == PageOrientation.LANDSCAPE);
+
+        }
+
+        /**
          * Writes the legend sheet: {@code entries}' labels in a bold left column, their
          * descriptions in a plain right column.
          *
          * @param workbook the workbook to add the sheet to
          * @param title the sheet's own name
          * @param entries the legend's entries, in order
+         * @param pageLayout the page size and orientation applied to the sheet's print setup
          */
-        private static void writeLegendSheet(final XSSFWorkbook workbook, final String title, final List<TranscriptLegendEntry> entries) {
+        private static void writeLegendSheet(
+                final XSSFWorkbook workbook, final String title, final List<TranscriptLegendEntry> entries, final PageLayout pageLayout
+        ) {
 
             final Sheet sheet = workbook.createSheet(sheetName(title));
+            applyPrintSetup(sheet, pageLayout);
 
             final Font labelFont = workbook.createFont();
             labelFont.setBold(true);
