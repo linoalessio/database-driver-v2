@@ -125,7 +125,11 @@ public class JsonDatabaseSection implements DatabaseSection {
 
         if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new EntryAlreadyInserted(databaseEntry.getId());
 
-        final JsonDocument document = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getDocument());
+        // databaseEntry.getDocument() is already the full "data"-enveloped document (see its
+        // own javadoc); appending it here as-is under another "data" key would double-wrap it,
+        // so its already-unwrapped getMetaData() is used instead - the same shape update() below
+        // writes, so a freshly inserted entry round-trips identically to a later-updated one.
+        final JsonDocument document = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData());
         document.write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());

@@ -112,7 +112,10 @@ public class MongoDBDatabaseSection implements DatabaseSection {
 
         if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new EntryAlreadyInserted(databaseEntry.getId());
 
-        final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getDocument()).toJson();
+        // databaseEntry.getDocument() is already the full "data"-enveloped document (see its
+        // own javadoc); appending it here as-is under another "data" key would double-wrap it,
+        // so its already-unwrapped getMetaData() is used instead, matching update() below.
+        final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData()).toJson();
         this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
