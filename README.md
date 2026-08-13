@@ -8,7 +8,7 @@ DatabaseDriver is a management system for multiple SQL and NoSQL database types,
 through a single, unified interface. Instead of learning a separate API for every backend, you
 work against `DatabaseRepository`, `DatabaseProvider`, `DatabaseSection` and `DatabaseEntry` —
 the same four abstractions regardless of whether the data actually lives in MySQL, MongoDB, Redis
-or a plain directory of JSON files. Every operation is also available in a non-blocking,
+or a plain directory of JSON or CSV files. Every operation is also available in a non-blocking,
 `CompletableFuture`-based variant.
 
 ## Project Structure
@@ -45,6 +45,7 @@ You depend on `database-driver-api` at compile time to program against the inter
 | [MongoDB](https://www.mongodb.com/)   | Document-oriented NoSQL database, great for handling flexible, semi-structured data (e.g., JSON), often used in scalable web and cloud apps.                                                                     |
 | [RethinkDB](https://rethinkdb.com)    | Real-time NoSQL database optimized for apps requiring live updates and push notifications (e.g., chat apps, dashboards).                                                                                         |
 | JSON File Store                       | Very simple storage solution using local JSON files; suitable for small projects, configs, or prototyping without the overhead of a full database server.                                                       |
+| CSV File Store                        | Flat-file storage using one CSV file per section (one row per entry); like the JSON file store but keeps a whole section in a single file instead of one file per entry. Both columns are Base64-encoded so arbitrary ids/documents always round-trip safely, so the raw file isn't meant to be hand-edited. |
 | [Redis](https://redis.io)             | Redis is an open-source, in-memory data store used worldwide for high-speed data storage and retrieval. It powers applications as a cache, database, and message broker, enabling real-time analytics, fast session management, and scalable messaging systems. |
 
 > **Note:** The `database-driver-plugin` module ships JDBC drivers for PostgreSQL, H2, SQLite and
@@ -143,7 +144,7 @@ new DatabaseRepositoryRegistry(/* logBytes = */ false);
 * The method returns the newly created DatabaseProvider.
 *
 * DatabaseType SQL:   MY_SQL, POSTGRE_SQL, H2_DB, MARIA_DB, SQLITE, ORACLE, MICROSOFT_SQL_SERVER, APACHE_DERBY
-* DatabaseType NoSQL: MONGO_DB, RETHINK_DB, JSON, REDIS
+* DatabaseType NoSQL: MONGO_DB, RETHINK_DB, JSON, CSV, REDIS
 */
 final DatabaseProvider databaseProvider = DatabaseRepository.getInstance().registerDatabaseProvider(id, databaseType, credentials);
 
@@ -278,8 +279,10 @@ final Credentials mongodb   = new Credentials(Paths.get("CONFIG_PATH"), "address
 final Credentials rethinkDB = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
 final Credentials redis     = new Credentials(Paths.get("CONFIG_PATH"), "address", "userName", "password", port, "database");
 
-// NoSQL — file-based backend: fileRepository is the *directory* the JSON documents are stored in
+// NoSQL — file-based backends: fileRepository is the *directory* the section files are stored in
+// (one JSON file per entry for JSON, one CSV file per section for CSV)
 final Credentials json = new Credentials(Paths.get("CONFIG_PATH"), Paths.get("DATABASE_REPOSITORY_PATH"));
+final Credentials csv  = new Credentials(Paths.get("CONFIG_PATH"), Paths.get("DATABASE_REPOSITORY_PATH"));
 ```
 
 `Credentials` persists whatever you pass in to `configDestination` as JSON the first time it runs;
