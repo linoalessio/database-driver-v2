@@ -33,6 +33,7 @@ import de.lino.database.provider.DatabaseSection;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
 
+import java.io.File;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -83,6 +84,13 @@ public class JsonDatabaseProvider implements DatabaseProvider {
      * added or removed directly on disk since this provider was constructed (e.g. a
      * backup restored while the application was already running) is picked up here,
      * and every rebuilt section starts with a fresh read of its own contents.
+     * <p>
+     * Only directories are considered; a stray non-directory file sitting directly in
+     * the file repository (most commonly a filesystem-managed one such as macOS'
+     * {@code .DS_Store}, dropped in by Finder the moment the folder is ever browsed) is
+     * skipped rather than treated as an empty section, which would otherwise fail
+     * outright - a {@link JsonDatabaseSection} always expects its own name to resolve to
+     * a directory it can list.
      */
     @Override
     public void reload() {
@@ -90,7 +98,7 @@ public class JsonDatabaseProvider implements DatabaseProvider {
         FileProvider.getInstance().createDirectory(Paths.get(credentials.getFileRepository()));
         this.databaseSections.clear();
 
-        Arrays.stream(Objects.requireNonNull(Paths.get(credentials.getFileRepository()).toFile().listFiles())).forEach(path -> {
+        Arrays.stream(Objects.requireNonNull(Paths.get(credentials.getFileRepository()).toFile().listFiles(File::isDirectory))).forEach(path -> {
 
             final String name = path.getName();
             final DatabaseSection databaseSection = new JsonDatabaseSection(name, credentials);
