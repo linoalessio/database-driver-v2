@@ -37,13 +37,39 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
+/**
+ * The shared {@link DatabaseProvider} implementation behind every SQL vendor this driver
+ * supports (MySQL, PostgreSQL, MariaDB, SQLite, H2, Oracle, Microsoft SQL Server, Apache Derby -
+ * see the vendor-specific subclasses in the sibling packages), each {@link DatabaseSection}
+ * mapping to one table, all sharing this provider's single {@link SQLExecution} connection pool.
+ */
 public class SQLDatabaseProvider implements DatabaseProvider {
 
+    /**
+     * The SQL vendor this provider is connected to, needed to pick the right table-listing
+     * query in {@link #getPattern} and the right BLOB column type per {@link SQLDatabaseSection}.
+     */
     private final DatabaseType databaseType;
+
+    /**
+     * The connection pool shared by this provider and every {@link SQLDatabaseSection} it creates.
+     */
     private final SQLExecution sqlExecution;
+
+    /**
+     * Every registered section, keyed by table name.
+     */
     private final Map<String, DatabaseSection> databaseSections;
 
+    /**
+     * Connects via {@code sqlExecution} and loads every existing table of {@code databaseType} as
+     * a {@link SQLDatabaseSection}.
+     *
+     * @param databaseType  the SQL vendor being connected to
+     * @param sqlExecution  the connection pool to run every query and update through
+     */
     @SneakyThrows
     public SQLDatabaseProvider(@NotNull DatabaseType databaseType, @NotNull SQLExecution sqlExecution) {
 
@@ -79,13 +105,7 @@ public class SQLDatabaseProvider implements DatabaseProvider {
 
     @Override
     public DatabaseSection createSection(@NotNull String name) {
-
-        if (this.databaseSections.containsKey(name)) return this.databaseSections.get(name);
-
-        final DatabaseSection databaseSection = new SQLDatabaseSection(this.databaseType, name, this.sqlExecution);
-        this.databaseSections.put(name, databaseSection);
-
-        return databaseSection;
+        return this.databaseSections.computeIfAbsent(name, key -> new SQLDatabaseSection(this.databaseType, key, this.sqlExecution));
     }
 
     @Override
@@ -115,6 +135,32 @@ public class SQLDatabaseProvider implements DatabaseProvider {
         this.databaseSections.clear();
     }
 
+    /**
+     * {@link DatabaseSection#clear() Clears} every section concurrently rather than one table at
+     * a time, since every section shares the same {@link SQLExecution} connection pool - which is
+     * itself built for concurrent multi-threaded use - so clearing them in parallel is no less
+     * safe than clearing them sequentially, just faster; overrides {@link DatabaseProvider}'s
+     * default, which would otherwise run the whole sequential {@link #clear()} on a single
+     * background thread.
+     *
+     * @return a {@link CompletableFuture} that completes once every section has been cleared
+     */
+    @Override
+    public CompletableFuture<Void> clearAsync() {
+
+        final List<CompletableFuture<Void>> pending = this.getSections().stream().map(DatabaseSection::clearAsync).toList();
+
+        return CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new)).thenRun(this.databaseSections::clear);
+
+    }
+
+    /**
+     * Builds the vendor-specific query that lists every existing table's name as
+     * {@code TABLE_NAME}, used by the constructor to load existing {@link SQLDatabaseSection}s.
+     *
+     * @param databaseType the SQL vendor to build a table-listing query for
+     * @return the vendor-specific table-listing query
+     */
     private static @NotNull String getPattern(@NotNull DatabaseType databaseType) {
 
         String tablePattern;

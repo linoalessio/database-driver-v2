@@ -1,4 +1,6 @@
-package de.lino.database.export.transcript;
+package de.lino.database.export.transcript.format;
+
+import de.lino.database.export.transcript.TranscriptExporter;
 
 import java.util.Objects;
 

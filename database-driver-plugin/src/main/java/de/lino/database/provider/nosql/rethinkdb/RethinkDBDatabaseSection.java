@@ -50,17 +50,48 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+/**
+ * The {@link DatabaseSection} backing one RethinkDB table. Entries are cached in memory (loaded
+ * once in the constructor and kept in sync on every write) so reads never touch the database,
+ * only writes do.
+ */
 @Getter
 public class RethinkDBDatabaseSection implements DatabaseSection {
 
+    /**
+     * This section's table name.
+     */
     private final String name;
 
+    /**
+     * Every entry currently in {@link #table}, keyed by id and kept in sync with the database by
+     * every write method; the source of truth for every read method.
+     */
     private final Map<String, DatabaseEntry> entries;
 
+    /**
+     * The row shape ({@code {id, values}}) every query against {@link #table} is deserialized as.
+     */
     private final TypeReference<Map<String, String>> cache;
+
+    /**
+     * The connection shared with this section's owning {@link RethinkDBDatabaseProvider} and
+     * every one of its sibling sections.
+     */
     private final Connection connection;
+
+    /**
+     * The table this section wraps.
+     */
     private final Table table;
 
+    /**
+     * Loads {@code name}'s existing rows into {@link #entries}.
+     *
+     * @param name       this section's table name
+     * @param connection the connection to run every query through
+     * @param db         the database {@code name}'s table belongs to
+     */
     public RethinkDBDatabaseSection(@NotNull String name, @NotNull Connection connection, @NotNull Db db) {
 
         this.name = name;
@@ -87,10 +118,9 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
     @Override
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
+        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         this.table.insert(this.mapping(databaseEntry)).runNoReply(this.connection);
-        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -102,7 +132,6 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
         if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
         this.table.update(this.mapping(databaseEntry)).runNoReply(this.connection);
 
-        this.entries.remove(databaseEntry.getId());
         this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());

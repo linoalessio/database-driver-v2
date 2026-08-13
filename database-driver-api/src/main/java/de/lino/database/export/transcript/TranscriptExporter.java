@@ -1,6 +1,7 @@
 package de.lino.database.export.transcript;
 
 import de.lino.database.export.data.DataExporter;
+import de.lino.database.export.transcript.format.PageLayout;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -8,16 +9,19 @@ import java.util.List;
 
 /**
  * The shared shape of a grouped, "transcript-style" exporter, e.g.
- * {@link ExportCoordinator.TranscriptPDFExporter} or
- * {@link ExportCoordinator.TranscriptExcelExporter}: writing an already-grouped,
+ * {@code ExportCoordinator.TranscriptPDFExporter} or
+ * {@code ExportCoordinator.TranscriptExcelExporter}: writing an already-grouped,
  * already-formatted data set - {@link TranscriptSection}s under a shared set of column
  * headers, plus an optional closing {@link TranscriptLegendEntry} legend - to a file.
  * The transcript counterpart of {@link DataExporter}'s flat-table contract.
  *
- * <p>{@link ExportCoordinator.TranscriptPDFExporter} and
- * {@link ExportCoordinator.TranscriptExcelExporter} implement this interface
- * directly; being a {@link FunctionalInterface}, it can just as well be satisfied with
- * a lambda or method reference for a one-off implementation.
+ * <p>{@code ExportCoordinator.TranscriptPDFExporter}, {@code ExportCoordinator.TranscriptExcelExporter},
+ * {@code ExportCoordinator.TranscriptCSVExporter}, {@code ExportCoordinator.TranscriptXMLExporter},
+ * {@code ExportCoordinator.TranscriptJsonExporter} and {@code ExportCoordinator.TranscriptDocxExporter}
+ * implement this interface directly (each private to {@code ExportCoordinator}, only
+ * reachable through it) - see {@code ExportCoordinator.exportTranscript}, which
+ * auto-detects between them; being a {@link FunctionalInterface}, it can just as well
+ * be satisfied with a lambda or method reference for a one-off implementation.
  */
 @FunctionalInterface
 public interface TranscriptExporter {

@@ -41,11 +41,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * The {@link DatabaseProvider} backed by a Redis database, each {@link DatabaseSection} a
+ * {@code "<name>:*"} key prefix via {@link RedisDatabaseSection}, all sharing this provider's
+ * single {@link JedisPool}. {@link JedisPool} is itself thread-safe and designed for concurrent
+ * multi-threaded use, so every method here is safe to call concurrently without additional
+ * locking.
+ */
 public class RedisDatabaseProvider implements DatabaseProvider {
 
+    /**
+     * The connection pool shared by this provider and every {@link RedisDatabaseSection} it creates.
+     */
     private final JedisPool jedisPool;
+
+    /**
+     * Every registered section, keyed by key prefix.
+     */
     private final Map<String, DatabaseSection> databaseSections;
 
+    /**
+     * Connects to a Redis database with {@code credentials} and loads every existing key prefix
+     * as a {@link RedisDatabaseSection}.
+     *
+     * @param credentials the login credentials and connection details to connect with
+     */
     public RedisDatabaseProvider(@NotNull Credentials credentials) {
 
         this.databaseSections = Maps.newConcurrentMap();
@@ -92,13 +112,7 @@ public class RedisDatabaseProvider implements DatabaseProvider {
 
     @Override
     public DatabaseSection createSection(@NotNull String name) {
-
-        if (this.databaseSections.containsKey(name)) return this.databaseSections.get(name);
-
-        final DatabaseSection databaseSection = new RedisDatabaseSection(this.jedisPool, name);
-        this.databaseSections.put(name, databaseSection);
-
-        return databaseSection;
+        return this.databaseSections.computeIfAbsent(name, key -> new RedisDatabaseSection(this.jedisPool, key));
     }
 
     @Override
@@ -112,7 +126,12 @@ public class RedisDatabaseProvider implements DatabaseProvider {
             do {
 
                 final ScanResult<String> result = jedis.scan(cursor, scanParams);
-                for (String key : result.getResult()) jedis.del(key);
+                final List<String> keys = result.getResult();
+
+                // One DEL per scanned batch rather than one per key, cutting round trips from
+                // O(matched keys) to O(matched keys / scan batch size).
+                if (!keys.isEmpty()) jedis.del(keys.toArray(new String[0]));
+
                 cursor = result.getCursor();
 
             } while (!cursor.equals("0"));

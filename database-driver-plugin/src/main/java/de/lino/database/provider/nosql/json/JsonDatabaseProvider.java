@@ -36,11 +36,31 @@ import org.jetbrains.annotations.UnmodifiableView;
 import java.nio.file.Paths;
 import java.util.*;
 
+/**
+ * The file-based {@link DatabaseProvider}: every {@link DatabaseSection} is a subdirectory of
+ * {@link Credentials}'s {@code getFileRepository()}, holding one JSON file per entry, via
+ * {@link JsonDatabaseSection}.
+ */
 public class JsonDatabaseProvider implements DatabaseProvider {
 
+    /**
+     * The login credentials this provider was constructed with, needed to resolve every new
+     * {@link JsonDatabaseSection}'s subdirectory under {@link Credentials}'s {@code getFileRepository()}.
+     */
     private final Credentials credentials;
+
+    /**
+     * Every registered section, keyed by name.
+     */
     private final Map<String, DatabaseSection> databaseSections;
 
+    /**
+     * Loads every existing subdirectory of {@code credentials}' file repository as a
+     * {@link JsonDatabaseSection}.
+     *
+     * @param credentials the login credentials, providing the file repository root this
+     *                    provider's sections live under
+     */
     public JsonDatabaseProvider(@NotNull Credentials credentials) {
 
         this.credentials = credentials;
@@ -63,13 +83,7 @@ public class JsonDatabaseProvider implements DatabaseProvider {
 
     @Override
     public DatabaseSection createSection(@NotNull String name) {
-
-        if (this.databaseSections.containsKey(name)) return this.databaseSections.get(name);
-
-        final DatabaseSection databaseSection = new JsonDatabaseSection(name, this.credentials);
-        this.databaseSections.put(name, databaseSection);
-
-        return databaseSection;
+        return this.databaseSections.computeIfAbsent(name, key -> new JsonDatabaseSection(key, this.credentials));
     }
 
     @Override

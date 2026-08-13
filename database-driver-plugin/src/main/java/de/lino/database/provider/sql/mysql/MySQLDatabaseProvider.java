@@ -32,9 +32,18 @@ import de.lino.database.provider.sql.SQLExecution;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * The {@link SQLDatabaseProvider} for MySQL, connected via {@link SQLExecution} using
+ * {@link DatabaseType#MY_SQL}'s JDBC driver and URL scheme.
+ */
 @Getter
 public class MySQLDatabaseProvider extends SQLDatabaseProvider {
 
+    /**
+     * Connects to a MySQL database with {@code credentials}.
+     *
+     * @param credentials the login credentials and connection details to connect with
+     */
     public MySQLDatabaseProvider(@NotNull Credentials credentials) {
         super(DatabaseType.MY_SQL, new SQLExecution(DatabaseType.MY_SQL, credentials));
     }

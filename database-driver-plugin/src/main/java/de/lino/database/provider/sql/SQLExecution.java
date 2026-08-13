@@ -39,11 +39,33 @@ import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
+/**
+ * A single JDBC connection pool (via HikariCP) shared by every {@link SQLDatabaseSection} of one
+ * {@link de.lino.database.provider.DatabaseProvider}, plus the parameterized query/update
+ * helpers built on top of it. {@link HikariDataSource} is itself thread-safe and designed for
+ * concurrent multi-threaded use, so every method here is safe to call concurrently without
+ * additional locking.
+ */
 public class SQLExecution {
 
+    /**
+     * JDBC URL template shared by every vendor that connects over a plain
+     * {@code host:port/database} address (MySQL, PostgreSQL, MariaDB); other vendors build their
+     * own URL in {@link #getHikariConfig}.
+     */
     private static final String ARGUMENTS = "jdbc:%s://%s:%d/%s?serverTimezone=UTC";
+
+    /**
+     * The underlying connection pool every query and update runs against.
+     */
     private final HikariDataSource hikariDataSource;
 
+    /**
+     * Builds a connection pool for {@code databaseType}, configured with {@code credentials}.
+     *
+     * @param databaseType the SQL vendor to connect to
+     * @param credentials  the login credentials and connection details to connect with
+     */
     public SQLExecution(@NotNull DatabaseType databaseType, @NotNull Credentials credentials) {
 
         final HikariConfig hikariConfig = this.getHikariConfig(databaseType, credentials);
@@ -62,10 +84,22 @@ public class SQLExecution {
         this.hikariDataSource = new HikariDataSource(hikariConfig);
     }
 
+    /**
+     * Closes the underlying connection pool. No further queries or updates should be issued
+     * after this returns.
+     */
     public void shutdown() {
         this.hikariDataSource.close();
     }
 
+    /**
+     * Runs a parameterized {@code INSERT}/{@code UPDATE}/{@code DELETE}/DDL statement, binding
+     * each of {@code objects} in order (as raw bytes for {@code byte[]}, via
+     * {@link PreparedStatement#setObject} otherwise).
+     *
+     * @param query   the parameterized SQL statement to execute
+     * @param objects the values to bind, in placeholder order
+     */
     public void executeUpdate(@NotNull String query, @NonNls Object... objects) {
 
         try (Connection connection = this.hikariDataSource.getConnection(); PreparedStatement preparedStatement = connection.prepareStatement(query)) {
@@ -84,8 +118,19 @@ public class SQLExecution {
 
     }
 
-    public <T> T executeQuery(@NotNull String query, Function<ResultSet, T> function, @NotNull T defaultValue, @NonNls Object... objects) {
-
+    /**
+     * Runs a parameterized {@code SELECT} statement, binding each of {@code objects} in order,
+     * and maps the resulting {@link ResultSet} through {@code function}.
+     *
+     * @param <T>          the type {@code function} maps the result set to
+     * @param query        the parameterized SQL query to execute
+     * @param function     maps the query's result set to the returned value; its own unchecked
+     *                     exceptions are caught and treated the same as a failed query
+     * @param defaultValue the value returned if the query fails, or if {@code function} throws
+     * @param objects      the values to bind, in placeholder order
+     * @return {@code function}'s result, or {@code defaultValue} if the query or {@code function} failed
+     */
+    public <T> T executeQuery(@NotNull String query, @NotNull Function<ResultSet, T> function, @NotNull T defaultValue, @NonNls Object... objects) {
 
         try (Connection connection = this.hikariDataSource.getConnection(); PreparedStatement preparedStatement = connection.prepareStatement(query)) {
 
@@ -97,7 +142,7 @@ public class SQLExecution {
 
             try (final ResultSet resultSet = preparedStatement.executeQuery()) {
                 return function.apply(resultSet);
-            } catch (final Throwable throwable) {
+            } catch (final RuntimeException exception) {
                 return defaultValue;
             }
 
@@ -108,14 +153,40 @@ public class SQLExecution {
         return defaultValue;
     }
 
+    /**
+     * Execute the {@link #executeUpdate(String, Object...)} process async.
+     *
+     * @param query   the parameterized SQL statement to execute
+     * @param objects the values to bind, in placeholder order
+     * @return a {@link CompletableFuture} that completes once the statement has run
+     */
     public CompletableFuture<Void> executeUpdateAsync(@NotNull String query, @NonNls Object... objects) {
         return CompletableFuture.runAsync(() -> this.executeUpdate(query, objects));
     }
 
-    public <T> CompletableFuture<T> executeQueryAsync(@NotNull String query, Function<ResultSet, T> function, @NotNull T defaultValue, @NonNls Object... objects) {
+    /**
+     * Execute the {@link #executeQuery(String, Function, Object, Object...)} process async.
+     *
+     * @param <T>          the type {@code function} maps the result set to
+     * @param query        the parameterized SQL query to execute
+     * @param function     maps the query's result set to the returned value
+     * @param defaultValue the value the future resolves to if the query or {@code function} fails
+     * @param objects      the values to bind, in placeholder order
+     * @return a {@link CompletableFuture} resolving to {@code function}'s result, or
+     * {@code defaultValue} if the query or {@code function} failed
+     */
+    public <T> CompletableFuture<T> executeQueryAsync(@NotNull String query, @NotNull Function<ResultSet, T> function, @NotNull T defaultValue, @NonNls Object... objects) {
         return CompletableFuture.supplyAsync(() -> executeQuery(query, function, defaultValue, objects));
     }
 
+    /**
+     * Builds the {@link HikariConfig} for {@code databaseType}: shared pool sizing and prepared
+     * statement caching, plus a vendor-specific JDBC URL and driver class.
+     *
+     * @param databaseType the SQL vendor to build a configuration for
+     * @param credentials  the login credentials and connection details to connect with
+     * @return the built configuration, ready to open a {@link HikariDataSource} with
+     */
     private @NotNull HikariConfig getHikariConfig(@NotNull DatabaseType databaseType, @NotNull Credentials credentials) {
 
         final HikariConfig hikariConfig = new HikariConfig();

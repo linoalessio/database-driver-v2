@@ -67,6 +67,8 @@ public enum DatabaseType {
      */
     JSON("json", "NULL"),
 
+    CSV("csv", "NULL"),
+
     /**
      * MariaDB, accessed through its JDBC driver.
      */

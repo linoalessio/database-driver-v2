@@ -38,19 +38,45 @@ import org.jetbrains.annotations.UnmodifiableView;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * The {@link DatabaseProvider} backed by a MongoDB database, each {@link DatabaseSection} a
+ * collection via {@link MongoDBDatabaseSection}. {@link MongoClient} and {@link MongoDatabase}
+ * are themselves thread-safe and designed for concurrent multi-threaded use, so every method
+ * here is safe to call concurrently without additional locking.
+ */
 public class MongoDBDatabaseProvider implements DatabaseProvider {
 
-    private static final List<String> FORBIDDEN = Arrays.asList("system.version", "system.users");
+    /**
+     * Collection names that are never exposed as a {@link DatabaseSection}, since they are
+     * MongoDB-internal rather than application data.
+     */
+    private static final List<String> FORBIDDEN = List.of("system.version", "system.users");
+
+    /**
+     * Every registered section, keyed by collection name.
+     */
     private final Map<String, DatabaseSection> databaseSections;
 
+    /**
+     * The client connection this provider and every section it creates share.
+     */
     private final MongoClient mongoClient;
+
+    /**
+     * The database this provider is connected to.
+     */
     private final MongoDatabase mongoDatabase;
 
+    /**
+     * Connects to a MongoDB database with {@code credentials} and loads every existing,
+     * non-{@link #FORBIDDEN} collection as a {@link MongoDBDatabaseSection}.
+     *
+     * @param credentials the login credentials and connection details to connect with
+     */
     public MongoDBDatabaseProvider(@NotNull Credentials credentials) {
 
         this.databaseSections = Maps.newConcurrentMap();
@@ -81,13 +107,7 @@ public class MongoDBDatabaseProvider implements DatabaseProvider {
 
     @Override
     public DatabaseSection createSection(@NotNull String name) {
-
-        if (this.databaseSections.containsKey(name)) return this.databaseSections.get(name);
-
-        final DatabaseSection databaseSection = new MongoDBDatabaseSection(this.mongoDatabase, name);
-        this.databaseSections.put(name, databaseSection);
-
-        return databaseSection;
+        return this.databaseSections.computeIfAbsent(name, key -> new MongoDBDatabaseSection(this.mongoDatabase, key));
     }
 
     @Override
