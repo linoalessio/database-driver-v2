@@ -49,7 +49,26 @@ public class CSVDatabaseProvider implements DatabaseProvider {
         this.repository = Path.of(credentials.getFileRepository());
         this.databaseSections = Maps.newConcurrentMap();
 
+        this.reload();
+
+    }
+
+    @Override
+    public void shutdown() {
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
+     * {@link CSVDatabaseSection} per {@value #EXTENSION} file currently under
+     * {@link #repository}, the same scan the constructor itself runs.
+     */
+    @Override
+    public void reload() {
+
         FileProvider.getInstance().createDirectory(this.repository);
+        this.databaseSections.clear();
 
         final File[] files = this.repository.toFile().listFiles((directory, fileName) -> fileName.endsWith(EXTENSION));
 
@@ -58,10 +77,6 @@ public class CSVDatabaseProvider implements DatabaseProvider {
             this.databaseSections.put(name, new CSVDatabaseSection(name, file.toPath()));
         }
 
-    }
-
-    @Override
-    public void shutdown() {
     }
 
     @Override

@@ -64,9 +64,26 @@ public class CSVDatabaseSection implements DatabaseSection {
         this.file = file;
         this.entries = Maps.newConcurrentMap();
 
-        FileProvider.getInstance().createFile(file);
+        this.reload();
 
-        for (final String line : readLines(file)) {
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #entries} entirely and re-populates it from every row currently
+     * in {@link #file}, the same scan the constructor itself runs - so a row added,
+     * changed or removed directly on disk since this section was constructed (e.g. a
+     * backup restored while the application was already running) is picked up here
+     * even though ordinary reads never touch the filesystem.
+     */
+    @Override
+    public void reload() {
+
+        FileProvider.getInstance().createFile(this.file);
+        this.entries.clear();
+
+        for (final String line : readLines(this.file)) {
 
             if (line.isBlank()) continue;
 

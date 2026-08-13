@@ -56,7 +56,7 @@ public class JsonDatabaseProvider implements DatabaseProvider {
 
     /**
      * Loads every existing subdirectory of {@code credentials}' file repository as a
-     * {@link JsonDatabaseSection}.
+     * {@link JsonDatabaseSection}, via {@link #reload()}.
      *
      * @param credentials the login credentials, providing the file repository root this
      *                    provider's sections live under
@@ -66,7 +66,30 @@ public class JsonDatabaseProvider implements DatabaseProvider {
         this.credentials = credentials;
         this.databaseSections = Maps.newConcurrentMap();
 
+        this.reload();
+
+    }
+
+    @Override
+    public void shutdown() {
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
+     * {@link JsonDatabaseSection} per subdirectory currently under {@code credentials}'
+     * file repository, the same scan the constructor itself runs - so a subdirectory
+     * added or removed directly on disk since this provider was constructed (e.g. a
+     * backup restored while the application was already running) is picked up here,
+     * and every rebuilt section starts with a fresh read of its own contents.
+     */
+    @Override
+    public void reload() {
+
         FileProvider.getInstance().createDirectory(Paths.get(credentials.getFileRepository()));
+        this.databaseSections.clear();
+
         Arrays.stream(Objects.requireNonNull(Paths.get(credentials.getFileRepository()).toFile().listFiles())).forEach(path -> {
 
             final String name = path.getName();
@@ -75,10 +98,6 @@ public class JsonDatabaseProvider implements DatabaseProvider {
 
         });
 
-    }
-
-    @Override
-    public void shutdown() {
     }
 
     @Override

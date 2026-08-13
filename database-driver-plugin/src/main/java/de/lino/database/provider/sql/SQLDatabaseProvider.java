@@ -77,7 +77,29 @@ public class SQLDatabaseProvider implements DatabaseProvider {
         this.sqlExecution = sqlExecution;
         this.databaseSections = Maps.newConcurrentMap();
 
-        String tablePattern = getPattern(databaseType);
+        this.reload();
+
+    }
+
+    @Override
+    public void shutdown() {
+        this.sqlExecution.shutdown();
+        this.databaseSections.clear();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
+     * {@link SQLDatabaseSection} per table currently reported by {@link #getPattern},
+     * the same query the constructor itself runs.
+     */
+    @Override
+    @SneakyThrows
+    public void reload() {
+
+        this.databaseSections.clear();
+        String tablePattern = getPattern(this.databaseType);
 
         this.sqlExecution.executeQueryAsync(tablePattern, resultSet -> {
 
@@ -85,7 +107,7 @@ public class SQLDatabaseProvider implements DatabaseProvider {
 
                 while (resultSet.next()) {
                     String tableName = resultSet.getString("TABLE_NAME");
-                    this.databaseSections.put(tableName, new SQLDatabaseSection(databaseType, tableName, this.sqlExecution));
+                    this.databaseSections.put(tableName, new SQLDatabaseSection(this.databaseType, tableName, this.sqlExecution));
                 }
 
             } catch (final SQLException exception) {
@@ -95,12 +117,6 @@ public class SQLDatabaseProvider implements DatabaseProvider {
             return true;
         }, true).get();
 
-    }
-
-    @Override
-    public void shutdown() {
-        this.sqlExecution.shutdown();
-        this.databaseSections.clear();
     }
 
     @Override

@@ -99,6 +99,22 @@ public class SQLDatabaseSection implements DatabaseSection {
         }
 
         this.sqlExecution.executeUpdateAsync("CREATE TABLE IF NOT EXISTS " + name + " (id TEXT, data " + sqlStatement + ");").get();
+        this.reload();
+
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #entries} entirely and re-populates it from every row currently
+     * in this section's table, the same query the constructor itself runs.
+     */
+    @Override
+    @SneakyThrows
+    public void reload() {
+
+        this.entries.clear();
+
         this.sqlExecution.executeQueryAsync("SELECT * FROM " + this.name, resultSet -> {
 
             try {

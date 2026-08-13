@@ -84,6 +84,20 @@ public interface DatabaseSection {
     void clear();
 
     /**
+     * Discards this section's own cached view of its entries and rebuilds it from the
+     * backing store, picking up entries added, changed or removed by something other
+     * than this section itself (e.g. a backup restored directly onto disk while this
+     * section was already loaded).
+     * <p>
+     * Every implementation shipped by this module caches its entries in memory beyond
+     * what each write already keeps in sync (see each implementation's own class-level
+     * documentation), so a genuine re-read of the backing store is required here, not a
+     * no-op - {@link #getEntries()} and friends would otherwise never reflect a change
+     * made outside this section.
+     */
+    void reload();
+
+    /**
      * Check whether a json document exists.
      *
      * @param id primary key
@@ -187,6 +201,15 @@ public interface DatabaseSection {
      */
     default CompletableFuture<List<DatabaseEntry>> getEntriesAsync() {
         return CompletableFuture.supplyAsync(this::getEntries);
+    }
+
+    /**
+     * Execute the {@link #reload()} process async.
+     *
+     * @return a {@link CompletableFuture} that completes once this section has been reloaded
+     */
+    default CompletableFuture<Void> reloadAsync() {
+        return CompletableFuture.runAsync(this::reload);
     }
 
 }
