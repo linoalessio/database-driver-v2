@@ -100,6 +100,11 @@ public class JsonDatabaseSection implements DatabaseSection {
      * so a file added, changed or removed directly on disk since this section was
      * constructed (e.g. a backup restored while the application was already running)
      * is picked up here even though ordinary reads never touch the filesystem.
+     * <p>
+     * Only files ending in {@code .json} are considered; a stray non-entry file sitting
+     * directly in {@link #parent} (most commonly a filesystem-managed one such as macOS'
+     * {@code .DS_Store}, dropped in by Finder the moment the folder is ever browsed) is
+     * skipped rather than parsed as an entry, which would otherwise fail outright.
      */
     @Override
     public void reload() {
@@ -107,7 +112,7 @@ public class JsonDatabaseSection implements DatabaseSection {
         FileProvider.getInstance().createDirectory(this.parent);
         this.entries.clear();
 
-        Arrays.stream(Objects.requireNonNull(this.parent.toFile().listFiles())).forEach(path -> {
+        Arrays.stream(Objects.requireNonNull(this.parent.toFile().listFiles((dir, name) -> name.endsWith(".json")))).forEach(path -> {
 
             final String id = path.getName().replace(".json", "");
             final JsonDocument document = JsonDocument.load(path.toPath());
