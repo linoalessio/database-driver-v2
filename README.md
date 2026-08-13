@@ -2,7 +2,7 @@
 
 ![Java](https://img.shields.io/badge/Java-17%2B-orange)
 ![Build](https://img.shields.io/badge/Build-Maven-C71A36)
-![Version](https://img.shields.io/badge/Version-1.3.1-blue)
+![Version](https://img.shields.io/badge/Version-1.3.2-blue)
 
 DatabaseDriver is a management system for multiple SQL and NoSQL database types, controlled
 through a single, unified interface. Instead of learning a separate API for every backend, you
@@ -62,7 +62,7 @@ git clone https://github.com/linoalessio/database-driver-v2.git
 ```
 
 Or add it as a Maven dependency (replace `%version%` with the version you want to use, currently
-`1.3.1`). `database-driver-api` gives you the interfaces to code against; `database-driver-plugin`
+`1.3.2`). `database-driver-api` gives you the interfaces to code against; `database-driver-plugin`
 provides the actual implementations and must be present on the runtime classpath. The artifacts
 are published to **GitHub Packages**, not Maven Central, so two extra steps are required before
 the dependencies below will resolve.
@@ -203,6 +203,16 @@ final List<DatabaseSection> sectionPool = databaseProvider.getSections();
 // Remove every section from this provider
 databaseProvider.clear();
 
+/*
+* Discard this provider's own cached view of which sections exist and rebuild it from
+* the backing store - e.g. after a backup was restored directly onto disk while this
+* provider was already running, which its own cache would otherwise never notice.
+* Every provider this module ships caches its section list, so this always does real
+* work; it does not affect any DatabaseSection obtained before the call, since the
+* rebuilt section list holds entirely new instances - re-fetch via getSection instead.
+*/
+databaseProvider.reload();
+
 // Shut down this database provider
 databaseProvider.shutdown();
 ```
@@ -233,6 +243,13 @@ final boolean isEntry = databaseSection.exists(id);
 
 // Remove every entry from this section (the section itself keeps existing)
 databaseSection.clear();
+
+/*
+* Discard this section's own cached view of its entries and rebuild it from the
+* backing store - the section-level counterpart of DatabaseProvider#reload(), for the
+* same "something changed the backing store outside this object" situation.
+*/
+databaseSection.reload();
 
 // To remove the section itself, delete it through its provider instead:
 databaseProvider.deleteSection(databaseSection.getName());
@@ -305,13 +322,22 @@ same api/plugin split as the rest of this driver (see [Project Structure](#proje
 `database-driver-plugin` ships the single, application-agnostic access point that wires
 them together,
 [`ExportCoordinator`](database-driver-plugin/src/main/java/de/lino/database/export/ExportCoordinator.java).
-It never constructs a concrete exporter itself; a caller hands in whichever
-implementation it wants through `ExporterInjector`'s setter methods, a.k.a.
-**interface injection**. `ExportCoordinator` bundles three default implementations as
-nested classes (`TranscriptPDFExporter`, `TranscriptExcelExporter`,
-`DirectoryZipExporter`), but nothing about the coordination logic itself is specific to
-any one application — a caller can inject its own `DataExporter`/`TranscriptExporter`/
-`ArchiveExporter` just as easily, from this project or another one entirely. See
+`exportTable` and `exportArchive` never construct a concrete exporter themselves; a
+caller hands one in through `ExporterInjector`'s setter methods, a.k.a. **interface
+injection** — no default `DataExporter` ships with this module, so exporting a flat
+table always means supplying your own, while `DirectoryZipExporter` ships as
+`ExportCoordinator`'s one built-in `ArchiveExporter`. `exportTranscript` takes the
+opposite approach and involves no injection at all: every call auto-detects the
+implementation to write with from `output`'s file extension (`.pdf`, `.xlsx`, `.csv`,
+`.xml`, `.json` or `.docx`), each backed by its own private nested class
+(`TranscriptPDFExporter`, `TranscriptExcelExporter`, `TranscriptCSVExporter`,
+`TranscriptXMLExporter`, `TranscriptJsonExporter`, `TranscriptDocxExporter`) — see
+`ExportType.fromSuffix`. A `PageLayout` (page size + orientation, from the
+`de.lino.database.export.transcript.format` package) is passed to every call, though it
+only visibly affects the PDF, Excel and DOCX renderings; use `PageLayout.DEFAULT` for A4
+portrait. Nothing about `ExportCoordinator`'s coordination logic itself is specific to
+any one application — a caller can inject its own `DataExporter`/`ArchiveExporter` just
+as easily, from this project or another one entirely. See
 [`university-driver`](https://github.com/linoalessio/university-driver) for a real
 consumer, binding `DirectoryZipExporter` to its own local database directory.
 
@@ -319,6 +345,7 @@ consumer, binding `DirectoryZipExporter` to its own local database directory.
 import de.lino.database.export.ExportCoordinator;
 import de.lino.database.export.transcript.TranscriptLegendEntry;
 import de.lino.database.export.transcript.TranscriptSection;
+import de.lino.database.export.transcript.format.PageLayout;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -341,22 +368,23 @@ final List<TranscriptLegendEntry> gradingScale = List.of(
 
 final ExportCoordinator coordinator = new ExportCoordinator();
 
-// Inject a default implementation - or supply your own DataExporter/
-// TranscriptExporter/ArchiveExporter instead, this class doesn't care which.
-coordinator.injectTranscriptExporter(new ExportCoordinator.TranscriptPDFExporter());
-
 // DirectoryZipExporter is bound to a source directory (and, optionally, a hook run
 // beforehand, e.g. to flush an application's in-memory cache to disk first) - nothing
-// about it is specific to this driver's own local database directory.
+// about it is specific to this driver's own local database directory. No default
+// DataExporter ships with this module; a caller that needs one supplies its own and
+// injects it via injectDataExporter the same way.
 coordinator.injectArchiveExporter(new ExportCoordinator.DirectoryZipExporter(Path.of("/var/data/app")));
 
-// Grouped, transcript-style PDF - swap in TranscriptExcelExporter for a .xlsx instead.
+// Grouped, transcript-style export - PDF here, but the implementation is auto-detected
+// from output's file extension (.pdf, .xlsx, .csv, .xml, .json, .docx all work, no
+// injection needed); PageLayout only visibly affects the PDF, Excel and DOCX renderings.
 coordinator.exportTranscript(
         "Transcript",
         List.of("Id", "Module", "Grade", "Status"),
         sections,
         "Grading Scale",
         gradingScale,
+        PageLayout.DEFAULT,
         Path.of("transcript.pdf")
 );
 

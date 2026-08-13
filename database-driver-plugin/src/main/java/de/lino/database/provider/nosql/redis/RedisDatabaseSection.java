@@ -82,6 +82,22 @@ public class RedisDatabaseSection implements DatabaseSection {
         this.jedisPool = jedisPool;
         this.entries = Maps.newConcurrentMap();
 
+        this.reload();
+
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #entries} entirely and re-populates it from every
+     * {@code "<name>:*"} key currently scanned via {@link #jedisPool}, the same scan
+     * the constructor itself runs.
+     */
+    @Override
+    public void reload() {
+
+        this.entries.clear();
+
         String cursor = "0";
         final ScanParams scanParams = new ScanParams().match(name + ":*").count(100);
 

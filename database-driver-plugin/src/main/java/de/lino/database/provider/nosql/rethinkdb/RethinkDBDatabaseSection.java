@@ -101,6 +101,21 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
         this.cache = Types.mapOf(String.class, String.class);
         this.table = db.table(name);
 
+        this.reload();
+
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #entries} entirely and re-populates it from every row currently
+     * in {@link #table}, the same scan the constructor itself runs.
+     */
+    @Override
+    public void reload() {
+
+        this.entries.clear();
+
         try (final Result<Map<String, String>> result = this.table.run(this.connection, this.cache)) {
 
             while (result.hasNext()) {

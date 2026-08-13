@@ -96,6 +96,23 @@ public interface DatabaseProvider {
     void clear();
 
     /**
+     * Discards this provider's own cached view of which sections exist and rebuilds it
+     * from the backing store, picking up sections created or removed by something other
+     * than this provider itself (e.g. a backup restored directly onto disk while this
+     * provider was already running).
+     * <p>
+     * Every implementation shipped by this module caches its section list beyond what
+     * each write already keeps in sync (see each implementation's own class-level
+     * documentation), so a genuine re-read of the backing store is required here, not a
+     * no-op - {@link #getSections()} / {@link #getSection(String)} would otherwise never
+     * reflect a change made outside this provider. Does not, by itself, affect any
+     * {@link DatabaseSection} obtained from this provider before the call, since the
+     * rebuilt section list holds entirely new instances; re-fetch it via
+     * {@link #getSection(String)} afterward.
+     */
+    void reload();
+
+    /**
      * Execute the {@link #shutdown()} process async.
      *
      * @return a {@link CompletableFuture} that completes once the provider has been shut down
@@ -163,6 +180,15 @@ public interface DatabaseProvider {
      */
     default CompletableFuture<Void> clearAsync() {
         return CompletableFuture.runAsync(this::clear);
+    }
+
+    /**
+     * Execute the {@link #reload()} process async.
+     *
+     * @return a {@link CompletableFuture} that completes once this provider has been reloaded
+     */
+    default CompletableFuture<Void> reloadAsync() {
+        return CompletableFuture.runAsync(this::reload);
     }
 
 }

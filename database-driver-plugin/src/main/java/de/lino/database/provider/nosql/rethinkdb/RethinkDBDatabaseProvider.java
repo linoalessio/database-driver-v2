@@ -84,12 +84,7 @@ public class RethinkDBDatabaseProvider implements DatabaseProvider {
                 .connect();
         this.db = RethinkDB.r.db(credentials.getDatabase());
 
-        try (final Result<String> names = this.db.tableList().run(this.connection, String.class)) {
-
-            names.forEach(name ->
-                    this.databaseSections.put(name, new RethinkDBDatabaseSection(name, this.connection, this.db)));
-
-        }
+        this.reload();
 
     }
 
@@ -97,6 +92,27 @@ public class RethinkDBDatabaseProvider implements DatabaseProvider {
     public void shutdown() {
         this.connection.close();
         this.databaseSections.clear();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
+     * {@link RethinkDBDatabaseSection} per table currently in {@link #db}, the same
+     * scan the constructor itself runs.
+     */
+    @Override
+    public void reload() {
+
+        this.databaseSections.clear();
+
+        try (final Result<String> names = this.db.tableList().run(this.connection, String.class)) {
+
+            names.forEach(name ->
+                    this.databaseSections.put(name, new RethinkDBDatabaseSection(name, this.connection, this.db)));
+
+        }
+
     }
 
     @Override

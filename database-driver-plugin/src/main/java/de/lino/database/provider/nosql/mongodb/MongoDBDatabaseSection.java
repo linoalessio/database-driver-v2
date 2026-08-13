@@ -81,6 +81,21 @@ public class MongoDBDatabaseSection implements DatabaseSection {
         this.entries = Maps.newConcurrentMap();
         this.collection = mongoDatabase.getCollection(name);
 
+        this.reload();
+
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #entries} entirely and re-populates it from every document
+     * currently in {@link #collection}, the same scan the constructor itself runs.
+     */
+    @Override
+    public void reload() {
+
+        this.entries.clear();
+
         for (Document document : this.collection.find()) {
 
             if (!document.containsKey("data")) throw new NoSuchDataFound(document.getString("id"));

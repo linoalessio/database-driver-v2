@@ -75,7 +75,7 @@ public class JsonDatabaseSection implements DatabaseSection {
 
     /**
      * Creates (if not already present) {@link #parent} and loads its existing entries into
-     * {@link #entries}.
+     * {@link #entries}, via {@link #reload()}.
      *
      * @param name        this section's directory name
      * @param credentials the login credentials, providing the file repository root this
@@ -88,7 +88,25 @@ public class JsonDatabaseSection implements DatabaseSection {
         this.entries = Maps.newConcurrentMap();
         this.parent = Paths.get(credentials.getFileRepository(), name);
 
+        this.reload();
+
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #entries} entirely and re-populates it from every {@code *.json}
+     * file currently in {@link #parent}, the same scan the constructor itself runs -
+     * so a file added, changed or removed directly on disk since this section was
+     * constructed (e.g. a backup restored while the application was already running)
+     * is picked up here even though ordinary reads never touch the filesystem.
+     */
+    @Override
+    public void reload() {
+
         FileProvider.getInstance().createDirectory(this.parent);
+        this.entries.clear();
+
         Arrays.stream(Objects.requireNonNull(this.parent.toFile().listFiles())).forEach(path -> {
 
             final String id = path.getName().replace(".json", "");

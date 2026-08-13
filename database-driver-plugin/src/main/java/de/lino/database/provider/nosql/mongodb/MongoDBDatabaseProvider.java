@@ -92,10 +92,7 @@ public class MongoDBDatabaseProvider implements DatabaseProvider {
 
         this.mongoDatabase = this.mongoClient.getDatabase(credentials.getDatabase());
 
-        for (String name : this.mongoDatabase.listCollectionNames()) {
-            if (FORBIDDEN.contains(name)) continue;
-            this.databaseSections.put(name, new MongoDBDatabaseSection(this.mongoDatabase, name));
-        }
+        this.reload();
 
     }
 
@@ -103,6 +100,25 @@ public class MongoDBDatabaseProvider implements DatabaseProvider {
     public void shutdown() {
         this.mongoClient.close();
         this.databaseSections.clear();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
+     * {@link MongoDBDatabaseSection} per non-{@link #FORBIDDEN} collection currently in
+     * {@link #mongoDatabase}, the same scan the constructor itself runs.
+     */
+    @Override
+    public void reload() {
+
+        this.databaseSections.clear();
+
+        for (String name : this.mongoDatabase.listCollectionNames()) {
+            if (FORBIDDEN.contains(name)) continue;
+            this.databaseSections.put(name, new MongoDBDatabaseSection(this.mongoDatabase, name));
+        }
+
     }
 
     @Override

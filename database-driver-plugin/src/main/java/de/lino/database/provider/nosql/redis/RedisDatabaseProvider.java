@@ -85,6 +85,28 @@ public class RedisDatabaseProvider implements DatabaseProvider {
             this.jedisPool = new JedisPool(jedisPoolConfig, "redis://:" + credentials.getPassword() + "@" + credentials.getAddress() + ":" + credentials.getPort() + "/" + credentials.getDatabase());
         }
 
+        this.reload();
+
+    }
+
+    @Override
+    public void shutdown() {
+        this.jedisPool.close();
+        this.databaseSections.clear();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
+     * {@link RedisDatabaseSection} per key prefix currently scanned via
+     * {@link #jedisPool}, the same scan the constructor itself runs.
+     */
+    @Override
+    public void reload() {
+
+        this.databaseSections.clear();
+
         String cursor = "0";
         final ScanParams scanParams = new ScanParams().match("*").count(100);
 
@@ -102,12 +124,6 @@ public class RedisDatabaseProvider implements DatabaseProvider {
 
         }
 
-    }
-
-    @Override
-    public void shutdown() {
-        this.jedisPool.close();
-        this.databaseSections.clear();
     }
 
     @Override
