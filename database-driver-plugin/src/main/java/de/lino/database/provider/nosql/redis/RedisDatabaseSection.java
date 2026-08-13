@@ -132,8 +132,11 @@ public class RedisDatabaseSection implements DatabaseSection {
 
         final String key = this.name + ":" + databaseEntry.getId();
 
+        // databaseEntry.getDocument() is already the full "data"-enveloped document (see its
+        // own javadoc); appending it here as-is under another "data" key would double-wrap it,
+        // so its already-unwrapped getMetaData() is used instead, matching update() below.
         try (final Jedis jedis = jedisPool.getResource()) {
-            jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getDocument()).toBytes());
+            jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
         }
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
