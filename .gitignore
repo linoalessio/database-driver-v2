@@ -35,6 +35,9 @@ build/
 ### Mac OS ###
 .DS_Store
 
+### Secrets ###
+token.env
+
 ### Maven ###
 qodana.yaml
 /.github/workflows/qodana_code_quality.yml
