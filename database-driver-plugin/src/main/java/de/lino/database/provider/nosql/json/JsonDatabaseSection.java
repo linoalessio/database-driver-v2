@@ -43,15 +43,44 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
+/**
+ * The {@link DatabaseSection} backing one directory of JSON files, one file per entry, named
+ * {@code <id>.json}. Entries are cached in memory (loaded once in the constructor and kept in
+ * sync on every write) so reads never touch the filesystem, only writes do.
+ */
 @Getter
 public class JsonDatabaseSection implements DatabaseSection {
 
+    /**
+     * This section's directory name, relative to {@link Credentials}'s {@code getFileRepository()}.
+     */
     private final String name;
+
+    /**
+     * The login credentials this section was constructed with, providing the file repository
+     * root {@link #parent} resolves against.
+     */
     private final Credentials credentials;
 
+    /**
+     * The directory every entry's JSON file is stored in.
+     */
     private final Path parent;
+
+    /**
+     * Every entry currently in {@link #parent}, keyed by id and kept in sync with the filesystem
+     * by every write method; the source of truth for every read method.
+     */
     private final Map<String, DatabaseEntry> entries;
 
+    /**
+     * Creates (if not already present) {@link #parent} and loads its existing entries into
+     * {@link #entries}.
+     *
+     * @param name        this section's directory name
+     * @param credentials the login credentials, providing the file repository root this
+     *                    section's directory lives under
+     */
     public JsonDatabaseSection(@NotNull String name, @NotNull Credentials credentials) {
 
         this.name = name;
@@ -76,11 +105,10 @@ public class JsonDatabaseSection implements DatabaseSection {
     @Override
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
+        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         final JsonDocument document = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getDocument());
         document.write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
-        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -108,7 +136,6 @@ public class JsonDatabaseSection implements DatabaseSection {
                 .append("data", data)
                 .write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
 
-        this.entries.remove(databaseEntry.getId());
         this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());

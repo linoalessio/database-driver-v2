@@ -45,14 +45,36 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * The {@link DatabaseSection} backing one MongoDB collection. Entries are cached in memory
+ * (loaded once in the constructor and kept in sync on every write) so reads never touch the
+ * database, only writes do.
+ */
 @Getter
 public class MongoDBDatabaseSection implements DatabaseSection {
 
+    /**
+     * This section's collection name.
+     */
     private final String name;
+
+    /**
+     * Every entry currently in {@link #collection}, keyed by id and kept in sync with the
+     * database by every write method; the source of truth for every read method.
+     */
     private final Map<String, DatabaseEntry> entries;
 
+    /**
+     * The collection this section wraps.
+     */
     private final MongoCollection<Document> collection;
 
+    /**
+     * Loads {@code name}'s existing documents into {@link #entries}.
+     *
+     * @param mongoDatabase the database {@code name}'s collection belongs to
+     * @param name          this section's collection name
+     */
     public MongoDBDatabaseSection(@NotNull MongoDatabase mongoDatabase, @NotNull String name) {
 
         this.name = name;
@@ -73,11 +95,10 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     @Override
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
+        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getDocument()).toJson();
         this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
-        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -91,7 +112,6 @@ public class MongoDBDatabaseSection implements DatabaseSection {
         final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData()).toJson();
         this.collection.updateOne(Filters.eq("id", databaseEntry.getId()), new Document("$set", new JsonDocument().getGson().fromJson(json, Document.class)));
 
-        this.entries.remove(databaseEntry.getId());
         this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
@@ -102,8 +122,6 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     public void delete(@NotNull String id) {
 
         if (!this.exists(id)) throw new NoSuchEntryFound(id);
-
-        if (this.collection.deleteOne(Filters.eq("id", id)).getDeletedCount() > 0) return;
 
         this.collection.deleteOne(Filters.eq("id", id));
         this.entries.remove(id);

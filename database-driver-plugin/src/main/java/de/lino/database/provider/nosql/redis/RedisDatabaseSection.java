@@ -45,17 +45,38 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * The {@link DatabaseSection} backing one Redis key prefix ({@code "<name>:<id>"} per entry).
+ * Entries are cached in memory (loaded once in the constructor and kept in sync on every write)
+ * so reads never touch Redis, only writes do.
+ */
 public class RedisDatabaseSection implements DatabaseSection {
 
+    /**
+     * The connection pool shared with this section's owning {@link RedisDatabaseProvider} and
+     * every one of its sibling sections.
+     */
     private final JedisPool jedisPool;
 
+    /**
+     * This section's key prefix.
+     */
     @Getter
     private final String name;
 
-    @Getter
+    /**
+     * Every entry currently under {@link #name}'s key prefix, keyed by id and kept in sync with
+     * Redis by every write method; the source of truth for every read method.
+     */
     private final Map<String, DatabaseEntry> entries;
 
-    public RedisDatabaseSection(final JedisPool jedisPool, final String name) {
+    /**
+     * Loads every existing {@code "<name>:*"} key into {@link #entries}.
+     *
+     * @param jedisPool the connection pool to run every command through
+     * @param name      this section's key prefix
+     */
+    public RedisDatabaseSection(@NotNull final JedisPool jedisPool, @NotNull final String name) {
 
         this.name = name;
         this.jedisPool = jedisPool;
@@ -91,14 +112,13 @@ public class RedisDatabaseSection implements DatabaseSection {
     @Override
     public void insert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (this.exists(databaseEntry.getId())) throw new EntryAlreadyInserted(databaseEntry.getId());
+        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new EntryAlreadyInserted(databaseEntry.getId());
 
         final String key = this.name + ":" + databaseEntry.getId();
 
         try (final Jedis jedis = jedisPool.getResource()) {
             jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getDocument()).toBytes());
         }
-        this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
 
@@ -114,7 +134,6 @@ public class RedisDatabaseSection implements DatabaseSection {
             jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
         }
 
-        this.entries.remove(databaseEntry.getId());
         this.entries.put(databaseEntry.getId(), databaseEntry);
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
@@ -142,7 +161,16 @@ public class RedisDatabaseSection implements DatabaseSection {
     @Override
     public void clear() {
 
-        for (String id : this.entries.keySet()) this.delete(id);
+        if (this.entries.isEmpty()) return;
+
+        // One DEL for every key at once, rather than one round trip per entry via delete().
+        final String[] keys = this.entries.keySet().stream().map(id -> this.name + ":" + id).toArray(String[]::new);
+
+        try (final Jedis jedis = jedisPool.getResource()) {
+            jedis.del(keys);
+        }
+
+        this.entries.clear();
 
     }
 

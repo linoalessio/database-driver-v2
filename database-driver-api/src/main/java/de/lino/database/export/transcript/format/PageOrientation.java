@@ -1,4 +1,4 @@
-package de.lino.database.export.transcript;
+package de.lino.database.export.transcript.format;
 
 /**
  * A page's orientation, paired with a {@link PageFormat} via {@link PageLayout}.
