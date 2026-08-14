@@ -62,7 +62,12 @@ pipeline {
             when { expression { return env.RELEASE_VERSION } }
             steps {
                 sh '''
-                    mvn -B -ntp versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
+                    mvn -B -ntp versions:set -DnewVersion="$RELEASE_VERSION"
+
+                    mkdir -p pomBackUps/database-driver-api pomBackUps/database-driver-plugin
+                    for backup in pom.xml.versionsBackup database-driver-api/pom.xml.versionsBackup database-driver-plugin/pom.xml.versionsBackup; do
+                        [ -f "$backup" ] && mv "$backup" "pomBackUps/$backup"
+                    done
 
                     python3 - <<'PYEOF'
 import os, re
