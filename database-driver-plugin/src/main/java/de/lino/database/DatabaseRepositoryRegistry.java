@@ -1,51 +1,25 @@
 package de.lino.database;
 
-
-/*
- * MIT License
- *
- * Copyright (c) lino, 08.09.2025
- * Copyright (c) contributors
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
-
 import com.google.common.collect.Maps;
-import de.lino.database.configuration.Credentials;
-import de.lino.database.file.DefaultFileProvider;
+import de.lino.database.database.DatabaseProvider;
+import de.lino.database.database.DatabaseSection;
+import de.lino.database.database.DatabaseType;
+import de.lino.database.database.auth.Credentials;
+import de.lino.database.database.file.DefaultFileProvider;
 import de.lino.database.json.JsonDocument;
-import de.lino.database.provider.DatabaseProvider;
-import de.lino.database.provider.DatabaseSection;
-import de.lino.database.provider.DatabaseType;
-import de.lino.database.provider.nosql.csv.CSVDatabaseProvider;
-import de.lino.database.provider.nosql.json.JsonDatabaseProvider;
-import de.lino.database.provider.nosql.mongodb.MongoDBDatabaseProvider;
-import de.lino.database.provider.nosql.redis.RedisDatabaseProvider;
-import de.lino.database.provider.nosql.rethinkdb.RethinkDBDatabaseProvider;
-import de.lino.database.provider.sql.derby.ApacheDerbyDatabaseProvider;
-import de.lino.database.provider.sql.h2db.H2DatabaseProvider;
-import de.lino.database.provider.sql.mariadb.MariaDBDatabaseProvider;
-import de.lino.database.provider.sql.microsoft.MicrosoftSQLServerDatabaseProvider;
-import de.lino.database.provider.sql.mysql.MySQLDatabaseProvider;
-import de.lino.database.provider.sql.orcale.OracleSQLDatabaseProvider;
-import de.lino.database.provider.sql.postgresql.PostgreSQLDatabaseProvider;
-import de.lino.database.provider.sql.sqlite.SQLiteDatabaseProvider;
+import de.lino.database.database.nosql.csv.CSVDatabaseProvider;
+import de.lino.database.database.nosql.json.JsonDatabaseProvider;
+import de.lino.database.database.nosql.mongodb.MongoDBDatabaseProvider;
+import de.lino.database.database.nosql.redis.RedisDatabaseProvider;
+import de.lino.database.database.nosql.rethinkdb.RethinkDBDatabaseProvider;
+import de.lino.database.database.sql.derby.ApacheDerbyDatabaseProvider;
+import de.lino.database.database.sql.h2db.H2DatabaseProvider;
+import de.lino.database.database.sql.mariadb.MariaDBDatabaseProvider;
+import de.lino.database.database.sql.microsoft.MicrosoftSQLServerDatabaseProvider;
+import de.lino.database.database.sql.mysql.MySQLDatabaseProvider;
+import de.lino.database.database.sql.orcale.OracleSQLDatabaseProvider;
+import de.lino.database.database.sql.postgresql.PostgreSQLDatabaseProvider;
+import de.lino.database.database.sql.sqlite.SQLiteDatabaseProvider;
 import de.lino.database.utils.Pair;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
@@ -67,7 +41,7 @@ import java.util.concurrent.CompletableFuture;
  * Every id-keyed mutation ({@link #registerDatabaseProvider}, {@link #unregisterDatabaseProvider})
  * goes through a single atomic map operation rather than a separate check-then-act pair, so
  * concurrent calls for the same id cannot race each other into double-registering or
- * double-shutting-down a provider.
+ * double-shutting-down a database.
  */
 @Getter
 public class DatabaseRepositoryRegistry extends DatabaseRepository {
@@ -80,8 +54,8 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
     private static volatile boolean LOG_BYTES = false;
 
     /**
-     * Every registered provider, keyed by its caller-assigned id, each entry pairing the
-     * provider with the {@link DatabaseType} it was created for. Backed by a
+     * Every registered database, keyed by its caller-assigned id, each entry pairing the
+     * database with the {@link DatabaseType} it was created for. Backed by a
      * {@link java.util.concurrent.ConcurrentHashMap} (via {@link Maps#newConcurrentMap()}) so
      * reads never block, and so {@link #registerDatabaseProvider} and
      * {@link #unregisterDatabaseProvider} can mutate it atomically per id.
@@ -151,13 +125,13 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
     }
 
     /**
-     * {@link #shutdown() Shuts down} every registered provider concurrently rather than one at a
-     * time, since each provider owns its own, independent connection and shutting one down is
+     * {@link #shutdown() Shuts down} every registered database concurrently rather than one at a
+     * time, since each database owns its own, independent connection and shutting one down is
      * typically I/O-bound (closing a socket, flushing a client) - overriding
      * {@link DatabaseRepository}'s default, which would otherwise just run the whole sequential
      * {@link #shutdown()} on a single background thread.
      *
-     * @return a {@link CompletableFuture} that completes once every provider has been shut down
+     * @return a {@link CompletableFuture} that completes once every database has been shut down
      */
     @Override
     public CompletableFuture<Void> shutdownAsync() {
@@ -201,7 +175,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
         });
 
-        System.out.println("Database Provider with id #" + sourceId + " (" + sourceType + ") successfully converted to database provider with id #" + targetId + " (" + targetPair.first() + ")");
+        System.out.println("Database Provider with id #" + sourceId + " (" + sourceType + ") successfully converted to database with id #" + targetId + " (" + targetPair.first() + ")");
         return new Pair<>(source, destination);
     }
 
@@ -243,7 +217,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
      * {@link Map#compute} remapping function - which, per {@link java.util.concurrent.ConcurrentHashMap}'s
      * contract, should stay short - is just this one call plus the existence check.
      *
-     * @param databaseType the database type to construct a provider for
+     * @param databaseType the database type to construct a database for
      * @param credentials  the login credentials to connect with
      * @return the newly constructed, already-connected {@link DatabaseProvider}
      */

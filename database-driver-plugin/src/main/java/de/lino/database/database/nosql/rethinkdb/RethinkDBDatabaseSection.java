@@ -1,0 +1,175 @@
+package de.lino.database.database.nosql.rethinkdb;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.collect.Maps;
+import com.rethinkdb.RethinkDB;
+import com.rethinkdb.gen.ast.Db;
+import com.rethinkdb.gen.ast.Table;
+import com.rethinkdb.model.MapObject;
+import com.rethinkdb.net.Connection;
+import com.rethinkdb.net.Result;
+import com.rethinkdb.utils.Types;
+import de.lino.database.DatabaseRepositoryRegistry;
+import de.lino.database.database.exception.DataAlreadyExist;
+import de.lino.database.database.exception.NoSuchDataFound;
+import de.lino.database.database.exception.NoSuchEntryFound;
+import de.lino.database.json.JsonDocument;
+import de.lino.database.database.DatabaseSection;
+import de.lino.database.database.entity.DatabaseEntry;
+import lombok.Getter;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * The {@link DatabaseSection} backing one RethinkDB table. Entries are cached in memory (loaded
+ * once in the constructor and kept in sync on every write) so reads never touch the database,
+ * only writes do.
+ */
+@Getter
+public class RethinkDBDatabaseSection implements DatabaseSection {
+
+    /**
+     * This section's table name.
+     */
+    private final String name;
+
+    /**
+     * Every entry currently in {@link #table}, keyed by id and kept in sync with the database by
+     * every write method; the source of truth for every read method.
+     */
+    private final Map<String, DatabaseEntry> entries;
+
+    /**
+     * The row shape ({@code {id, values}}) every query against {@link #table} is deserialized as.
+     */
+    private final TypeReference<Map<String, String>> cache;
+
+    /**
+     * The connection shared with this section's owning {@link RethinkDBDatabaseProvider} and
+     * every one of its sibling sections.
+     */
+    private final Connection connection;
+
+    /**
+     * The table this section wraps.
+     */
+    private final Table table;
+
+    /**
+     * Loads {@code name}'s existing rows into {@link #entries}.
+     *
+     * @param name       this section's table name
+     * @param connection the connection to run every query through
+     * @param db         the database {@code name}'s table belongs to
+     */
+    public RethinkDBDatabaseSection(@NotNull String name, @NotNull Connection connection, @NotNull Db db) {
+
+        this.name = name;
+        this.entries = Maps.newConcurrentMap();
+
+        this.connection = connection;
+        this.cache = Types.mapOf(String.class, String.class);
+        this.table = db.table(name);
+
+        this.reload();
+
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Discards {@link #entries} entirely and re-populates it from every row currently
+     * in {@link #table}, the same scan the constructor itself runs.
+     */
+    @Override
+    public void reload() {
+
+        this.entries.clear();
+
+        try (final Result<Map<String, String>> result = this.table.run(this.connection, this.cache)) {
+
+            while (result.hasNext()) {
+
+                final Map<String, String> content = result.next();
+                if (!content.containsKey("data")) throw new NoSuchDataFound(content.get("id"));
+                this.entries.put(content.get("id"), new DatabaseEntry(Objects.requireNonNull(content).get("id"), new JsonDocument(content.get("values"))));
+
+            }
+
+        }
+
+    }
+
+    @Override
+    public void insert(@NotNull DatabaseEntry databaseEntry) {
+
+        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new DataAlreadyExist(databaseEntry.getId());
+
+        this.table.insert(this.mapping(databaseEntry)).runNoReply(this.connection);
+
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
+
+    }
+
+    @Override
+    public void update(@NotNull DatabaseEntry databaseEntry) {
+
+        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
+        this.table.update(this.mapping(databaseEntry)).runNoReply(this.connection);
+
+        this.entries.put(databaseEntry.getId(), databaseEntry);
+
+        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
+
+    }
+
+    @Override
+    public void delete(@NotNull String id) {
+
+        if (!this.exists(id)) throw new NoSuchEntryFound(id);
+
+        this.table.filter(this.mapping(id)).delete().runNoReply(this.connection);
+        this.entries.remove(id);
+
+    }
+
+    @Override
+    public long count() {
+        return this.entries.size();
+    }
+
+    @Override
+    public void clear() {
+        this.table.delete().runNoReply(this.connection);
+        this.entries.clear();
+    }
+
+    @Override
+    public boolean exists(@NotNull String id) {
+        return this.entries.containsKey(id);
+    }
+
+    @Override
+    public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
+        return Optional.ofNullable(this.entries.get(id));
+    }
+
+    @Override
+    public @UnmodifiableView List<DatabaseEntry> getEntries() {
+        return List.copyOf(this.entries.values());
+    }
+
+    private MapObject<Object, Object> mapping(@NotNull String id) {
+        return RethinkDB.r.hashMap("id", id);
+    }
+
+    private Map<Object, Object> mapping(@NotNull DatabaseEntry databaseEntry) {
+        return this.mapping(databaseEntry.getId()).with("values", databaseEntry.getDocument().toString());
+    }
+
+}
