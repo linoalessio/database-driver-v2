@@ -2,7 +2,7 @@
 
 ![Java](https://img.shields.io/badge/Java-17%2B-orange)
 ![Build](https://img.shields.io/badge/Build-Maven-C71A36)
-![Version](https://img.shields.io/badge/Version-1.3.5-blue)
+![Version](https://img.shields.io/badge/Version-1.3.6-blue)
 
 DatabaseDriver is a management system for multiple SQL and NoSQL database types, controlled
 through a single, unified interface. Instead of learning a separate API for every backend, you
