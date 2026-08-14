@@ -6,7 +6,7 @@
 
     <groupId>de.lino.database</groupId>
     <artifactId>database-driver-v2</artifactId>
-    <version>1.3.6</version>
+    <version>1.3.7</version>
     <packaging>pom</packaging>
 
     <modules>
