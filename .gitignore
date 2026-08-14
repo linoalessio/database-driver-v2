@@ -3,6 +3,8 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+pomBackUps
+
 ### IntelliJ IDEA ###
 .idea/
 .idea/*.xml
