@@ -6,9 +6,11 @@
 #   ./run-pipeline.sh              CI build: build + test only (mirrors a normal push)
 #   ./run-pipeline.sh 1.3.7        Release build: bump version, tag, push, deploy, GitHub release
 #
-# Requires for a release build: GITHUB_TOKEN exported (needs "repo" + "write:packages" scope on
-# GitHub), and a working `git push` to origin (SSH key or stored credentials) since git push here
-# uses your normal git auth rather than embedding the token in the remote URL.
+# Requires for a release build: GITHUB_TOKEN exported (needs "repo" scope, or "Contents: write" +
+# "write:packages" on a fine-grained PAT -- "repo" alone covers both), and a working `git push` to
+# origin (SSH key or stored credentials) since git push here uses your normal git auth rather than
+# embedding the token in the remote URL. Also requires the `gh` CLI (used to attach the built jars
+# to the GitHub release).
 
 set -euo pipefail
 
@@ -50,6 +52,10 @@ if [ -n "$RELEASE_VERSION" ]; then
     fi
     if [ -z "${GITHUB_TOKEN:-}" ]; then
         echo "GITHUB_TOKEN must be exported (needs 'repo' and 'write:packages' scope)." >&2
+        exit 1
+    fi
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "gh CLI not found; required to attach release assets." >&2
         exit 1
     fi
 
@@ -96,11 +102,24 @@ if [ -n "$RELEASE_VERSION" ]; then
     mvn -B -ntp -DskipTests clean deploy
 
     # --- Stage: Publish GitHub release ---
-    curl -sSL -f -X POST \
-        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-        -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/${REPO_SLUG}/releases" \
-        -d "{\"tag_name\":\"v${RELEASE_VERSION}\",\"name\":\"v${RELEASE_VERSION}\",\"generate_release_notes\":true}"
+    # Attaches each module's main jar, sources jar and javadoc jar (built by the deploy step
+    # above) as release assets, in addition to the GitHub Packages deployment.
+    assets=()
+    for module in database-driver-api database-driver-plugin; do
+        for suffix in "" -sources -javadoc; do
+            jar="$module/target/$module-$RELEASE_VERSION$suffix.jar"
+            if [ ! -f "$jar" ]; then
+                echo "Expected build artifact missing: $jar" >&2
+                exit 1
+            fi
+            assets+=("$jar")
+        done
+    done
+
+    GH_TOKEN="$GITHUB_TOKEN" gh release create "v$RELEASE_VERSION" "${assets[@]}" \
+        --repo "$REPO_SLUG" \
+        --title "v$RELEASE_VERSION" \
+        --generate-notes
 
     echo "Released v$RELEASE_VERSION."
 else
