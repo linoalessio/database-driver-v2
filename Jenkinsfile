@@ -19,7 +19,7 @@ pipeline {
     parameters {
         string(
             name: 'RELEASE_VERSION',
-            defaultValue: '',
+            defaultValue: '1.3.6',
             description: 'Set to e.g. 1.3.6 to cut a release from this build: bumps the version, tags, pushes, deploys to GitHub Packages and publishes a GitHub release. Leave empty for a normal CI build (build + test only).'
         )
     }
