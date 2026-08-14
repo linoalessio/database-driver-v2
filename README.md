@@ -17,8 +17,8 @@ The project is split into two Maven modules:
 
 | **Module**                | **Artifact**            | **Contents**                                                                                                                                                    |
 |----------------------------|--------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `database-driver-api`      | `database-driver-api`    | The public API: `DatabaseRepository`, `DatabaseProvider`, `DatabaseSection`, `DatabaseEntry`, `Credentials`, the JSON document model (`JsonDocument`) and the driver's exceptions. |
-| `database-driver-plugin`   | `database-driver-plugin` | The concrete implementation: `DatabaseRepositoryRegistry` and one `DatabaseProvider`/`DatabaseSection` pair per supported database technology.                    |
+| `database-driver-api`      | `database-driver-api`    | The public API: `DatabaseRepository`, `DatabaseProvider`, `DatabaseSection`, `DatabaseEntry`, `Credentials`, the JSON document model (`JsonDocument`), the driver's exceptions, and the `Cache`/`ClusteredCache` contracts. |
+| `database-driver-plugin`   | `database-driver-plugin` | The concrete implementation: `DatabaseRepositoryRegistry`, one `DatabaseProvider`/`DatabaseSection` pair per supported database technology, and the default `Cache`/`ClusteredCache` implementations.                    |
 
 You depend on `database-driver-api` at compile time to program against the interfaces, and on
 `database-driver-plugin` at runtime to actually obtain a working `DatabaseRepository`.
@@ -200,20 +200,20 @@ final DatabaseSection cachedSection = databaseProvider.getSection(name).orElseTh
 // Get all registered sections
 final List<DatabaseSection> sectionPool = databaseProvider.getSections();
 
-// Remove every section from this provider
+// Remove every section from this database
 databaseProvider.clear();
 
 /*
-* Discard this provider's own cached view of which sections exist and rebuild it from
+* Discard this database's own cached view of which sections exist and rebuild it from
 * the backing store - e.g. after a backup was restored directly onto disk while this
-* provider was already running, which its own cache would otherwise never notice.
-* Every provider this module ships caches its section list, so this always does real
+* database was already running, which its own cache would otherwise never notice.
+* Every database this module ships caches its section list, so this always does real
 * work; it does not affect any DatabaseSection obtained before the call, since the
 * rebuilt section list holds entirely new instances - re-fetch via getSection instead.
 */
 databaseProvider.reload();
 
-// Shut down this database provider
+// Shut down this database
 databaseProvider.shutdown();
 ```
 
@@ -251,7 +251,7 @@ databaseSection.clear();
 */
 databaseSection.reload();
 
-// To remove the section itself, delete it through its provider instead:
+// To remove the section itself, delete it through its database instead:
 databaseProvider.deleteSection(databaseSection.getName());
 
 // Count all entries
@@ -315,13 +315,13 @@ sheets, grouped transcripts, or a full backup of the local database — without 
 logic depending on any one application's entities. The `export` package follows the
 same api/plugin split as the rest of this driver (see [Project Structure](#project-structure)):
 `database-driver-api` ships only the contracts —
-[`DataExporter`](database-driver-api/src/main/java/de/lino/database/export/data/DataExporter.java) (flat tables),
-[`TranscriptExporter`](database-driver-api/src/main/java/de/lino/database/export/transcript/TranscriptExporter.java) (grouped, section-based documents),
-[`ArchiveExporter`](database-driver-api/src/main/java/de/lino/database/export/archiv/ArchiveExporter.java) (whole-directory archives) and
-[`ExporterInjector`](database-driver-api/src/main/java/de/lino/database/export/ExporterInjector.java) — while
+[`DataExporter`](database-driver-api/src/main/java/de/lino/database/utils/export/data/DataExporter.java) (flat tables),
+[`TranscriptExporter`](database-driver-api/src/main/java/de/lino/database/utils/export/transcript/TranscriptExporter.java) (grouped, section-based documents),
+[`ArchiveExporter`](database-driver-api/src/main/java/de/lino/database/utils/export/archiv/ArchiveExporter.java) (whole-directory archives) and
+[`ExporterInjector`](database-driver-api/src/main/java/de/lino/database/utils/export/ExporterInjector.java) — while
 `database-driver-plugin` ships the single, application-agnostic access point that wires
 them together,
-[`ExportCoordinator`](database-driver-plugin/src/main/java/de/lino/database/export/ExportCoordinator.java).
+[`ExportCoordinator`](database-driver-plugin/src/main/java/de/lino/database/utility/export/ExportCoordinator.java).
 `exportTable` and `exportArchive` never construct a concrete exporter themselves; a
 caller hands one in through `ExporterInjector`'s setter methods, a.k.a. **interface
 injection** — no default `DataExporter` ships with this module, so exporting a flat
@@ -333,7 +333,7 @@ implementation to write with from `output`'s file extension (`.pdf`, `.xlsx`, `.
 (`TranscriptPDFExporter`, `TranscriptExcelExporter`, `TranscriptCSVExporter`,
 `TranscriptXMLExporter`, `TranscriptJsonExporter`, `TranscriptDocxExporter`) — see
 `ExportType.fromSuffix`. A `PageLayout` (page size + orientation, from the
-`de.lino.database.export.transcript.format` package) is passed to every call, though it
+`de.lino.database.utils.export.transcript.format` package) is passed to every call, though it
 only visibly affects the PDF, Excel and DOCX renderings; use `PageLayout.DEFAULT` for A4
 portrait. Nothing about `ExportCoordinator`'s coordination logic itself is specific to
 any one application — a caller can inject its own `DataExporter`/`ArchiveExporter` just
@@ -342,10 +342,10 @@ as easily, from this project or another one entirely. See
 consumer, binding `DirectoryZipExporter` to its own local database directory.
 
 ```java
-import de.lino.database.export.ExportCoordinator;
-import de.lino.database.export.transcript.TranscriptLegendEntry;
-import de.lino.database.export.transcript.TranscriptSection;
-import de.lino.database.export.transcript.format.PageLayout;
+import de.lino.database.utility.export.ExportCoordinator;
+import de.lino.database.utils.export.transcript.TranscriptLegendEntry;
+import de.lino.database.utils.export.transcript.TranscriptSection;
+import de.lino.database.utils.export.transcript.format.PageLayout;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -393,6 +393,61 @@ coordinator.exportArchive(Path.of("backup.zip"));
 ```
 
 --- ---
+
+## Using `Cache` / `ClusteredCache`
+
+Anything that needs to cache expensive-to-load values — e.g. a `DatabaseProvider` wrapping its
+own entries, or an application built on top of this driver — can use the async cache that ships
+alongside the driver, without depending on any implementation class. `database-driver-api` ships
+only the `Cache`/`ClusteredCache` contracts and the `Caches` factory; `database-driver-plugin`
+ships the actual in-memory implementation and registers it via `java.util.ServiceLoader`, so it
+is picked up automatically as long as `database-driver-plugin` is on the runtime classpath —
+same api/plugin split as the rest of this driver (see [Project Structure](#project-structure)).
+
+`Cache<ID, T>` is a single, unbounded-by-default key/value cache with an optional TTL and
+size limit; `ClusteredCache<ID, T>` partitions entries across multiple shards using consistent
+hashing, with an optional replication factor, following the same principle as Cassandra/DynamoDB
+(all still within a single JVM — see the `ClusteredCache` javadoc for the honest caveat on
+distributing across real machines). Both are obtained through `Caches`, never constructed
+directly:
+
+```java
+import de.lino.database.utils.cache.Cache;
+import de.lino.database.utils.cache.ClusteredCache;
+import de.lino.database.utils.cache.provider.Caches;
+
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+
+// A single cache, keyed by DatabaseEntry id. The loader is only called on a cache miss;
+// concurrent requests for the same, not-yet-cached id share the same in-flight load.
+final Cache<String, DatabaseEntry> entryCache = Caches.newCache(
+        id -> databaseSection.findEntryByIdAsync(id).thenApply(Optional::orElseThrow),
+        Duration.ofMinutes(5), // ttl, null for unbounded
+        10_000                 // maxSize, <= 0 for unbounded
+);
+
+// Reads never block; the loader runs asynchronously on a cache miss.
+final CompletableFuture<DatabaseEntry> entry = entryCache.get("Lino");
+
+// Write through directly, e.g. right after insert/update, bypassing the loader.
+entryCache.put("Lino", updatedEntry);
+
+entryCache.invalidate("Lino");   // drop a single entry
+entryCache.evictExpired();       // periodic cleanup, call from a scheduler, not the hot path
+
+// A clustered cache: 8 shards, each key replicated to 2 of them.
+final ClusteredCache<String, DatabaseEntry> clusteredCache = Caches.newClusteredCache(
+        /* shardCount        */ 8,
+        /* replicationFactor */ 2,
+        id -> databaseSection.findEntryByIdAsync(id).thenApply(Optional::orElseThrow),
+        Duration.ofMinutes(5),
+        1_000 // maxSize PER shard
+);
+
+clusteredCache.put("Lino", updatedEntry).join(); // writes to all replica shards in parallel
+final DatabaseEntry clusteredEntry = clusteredCache.get("Lino").join();
+```
 
 ## License
 
