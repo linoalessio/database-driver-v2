@@ -6,7 +6,7 @@
     <parent>
         <groupId>de.lino.database</groupId>
         <artifactId>database-driver-v2</artifactId>
-        <version>1.3.7</version>
+        <version>1.3.8</version>
     </parent>
 
     <artifactId>database-driver-plugin</artifactId>
@@ -80,7 +80,7 @@
         <dependency>
             <groupId>de.lino.database</groupId>
             <artifactId>database-driver-api</artifactId>
-            <version>1.3.7</version>
+            <version>1.3.8</version>
             <scope>compile</scope>
         </dependency>
 
