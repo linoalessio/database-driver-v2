@@ -62,7 +62,7 @@ git clone https://github.com/linoalessio/database-driver-v2.git
 ```
 
 Or add it as a Maven dependency (replace `%version%` with the version you want to use, currently
-`1.3.5`). `database-driver-api` gives you the interfaces to code against; `database-driver-plugin`
+`1.3.6`). `database-driver-api` gives you the interfaces to code against; `database-driver-plugin`
 provides the actual implementations and must be present on the runtime classpath. The artifacts
 are published to **GitHub Packages**, not Maven Central, so two extra steps are required before
 the dependencies below will resolve.
