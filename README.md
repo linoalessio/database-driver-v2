@@ -520,6 +520,40 @@ final List<Exam> removedFromCache    = entityFactory.unregisterEntities(FactoryT
 final List<Exam> removedFromDatabase = entityFactory.unregisterEntities(FactoryType.DATABASE, MyEntityType.EXAMS, exam);
 ```
 
+--- ---
+
+## AI-Assisted Development
+
+This project uses [Claude Code](https://claude.com/claude-code) (Anthropic's AI coding
+assistant) as a collaborative tool for parts of its development, alongside manual work by the
+maintainer. This section exists for transparency, not as a completeness guarantee — AI
+involvement isn't tracked on every commit, so what follows is a lower bound on where it was
+used, not an exhaustive log.
+
+**What Claude has contributed to**, to the best of what can be verified from this repository's
+history and the sessions that produced these changes:
+- The generic [`EntityFactory`/`FactoryType`/`DefaultEntityFactory`](#using-entityfactory)
+  entity registry — API design across several iterations, implementation, and its
+  documentation in this README.
+- `PageLayout`/`PageOrientation` page-format support for `TranscriptExporter`
+  ([`2608212`](https://github.com/linoalessio/database-driver-v2/commit/2608212e8fb919534f9ae6efec324866f1b99e70)).
+- Assorted smaller changes across the codebase: bug fixes, refactors, Javadoc passes, and
+  README updates, including this section.
+
+**How to verify it yourself:** commits explicitly co-authored by Claude carry a
+`Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` (or similar) trailer:
+
+```bash
+git log --all --grep="Co-Authored-By: Claude"
+```
+
+Not every AI-assisted change is marked this way — some, including part of the `EntityFactory`
+work above, were committed without the trailer — so this search under-counts rather than
+over-counts.
+
+**What stays human:** every AI-proposed change in this project is reviewed, tested and
+committed by the maintainer. Claude does not push, merge or cut a release on its own behalf.
+
 ## License
 
 This project is distributed under the terms found in [LICENSE.txt](LICENSE.txt).
