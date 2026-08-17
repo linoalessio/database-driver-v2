@@ -17,8 +17,8 @@ The project is split into two Maven modules:
 
 | **Module**                | **Artifact**            | **Contents**                                                                                                                                                    |
 |----------------------------|--------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `database-driver-api`      | `database-driver-api`    | The public API: `DatabaseRepository`, `DatabaseProvider`, `DatabaseSection`, `DatabaseEntry`, `Credentials`, the JSON document model (`JsonDocument`), the driver's exceptions, and the `Cache`/`ClusteredCache` contracts. |
-| `database-driver-plugin`   | `database-driver-plugin` | The concrete implementation: `DatabaseRepositoryRegistry`, one `DatabaseProvider`/`DatabaseSection` pair per supported database technology, and the default `Cache`/`ClusteredCache` implementations.                    |
+| `database-driver-api`      | `database-driver-api`    | The public API: `DatabaseRepository`, `DatabaseProvider`, `DatabaseSection`, `DatabaseEntry`, `Credentials`, the JSON document model (`JsonDocument`), the driver's exceptions, the `Cache`/`ClusteredCache` contracts, and the generic `EntityFactory`/`FactoryType` entity registry. |
+| `database-driver-plugin`   | `database-driver-plugin` | The concrete implementation: `DatabaseRepositoryRegistry`, one `DatabaseProvider`/`DatabaseSection` pair per supported database technology, the default `Cache`/`ClusteredCache` implementations, and `DefaultEntityFactory`.                    |
 
 You depend on `database-driver-api` at compile time to program against the interfaces, and on
 `database-driver-plugin` at runtime to actually obtain a working `DatabaseRepository`.
@@ -447,6 +447,77 @@ final ClusteredCache<String, DatabaseEntry> clusteredCache = Caches.newClustered
 
 clusteredCache.put("Lino", updatedEntry).join(); // writes to all replica shards in parallel
 final DatabaseEntry clusteredEntry = clusteredCache.get("Lino").join();
+```
+
+--- ---
+
+## Using `EntityFactory`
+
+Applications built on this driver typically need to keep a set of domain entities - grouped into
+logical types - available both as a fast in-memory registry and, when needed, persisted through
+one of the `DatabaseProvider`s above. Rather than one project hard-coding a closed `enum` of
+entity types together with their database section names and concrete classes, this driver ships a
+generic version: same api/plugin split as the rest of this driver (see
+[Project Structure](#project-structure)) -
+[`EntityFactory`](database-driver-api/src/main/java/de/lino/database/database/factory/EntityFactory.java)
+and [`FactoryType`](database-driver-api/src/main/java/de/lino/database/database/factory/FactoryType.java)
+are the contracts, and
+[`DefaultEntityFactory`](database-driver-plugin/src/main/java/de/lino/database/database/factory/DefaultEntityFactory.java)
+is the implementation.
+
+`EntityFactory` works against **any** `enum` constant you pass in as the grouping tag - it never
+needs a shared interface or a fixed set of types. Every method also takes a `FactoryType`
+argument that routes the call to one of two backends:
+
+- **`FactoryType.CACHE`** - acts purely on this factory's in-memory registry.
+- **`FactoryType.DATABASE`** - acts on the `DatabaseProvider` supplied when the factory was
+  constructed (`new DefaultEntityFactory(databaseProvider)`); throws
+  `UnsupportedOperationException` if the factory was constructed without one
+  (`new DefaultEntityFactory()`).
+
+Entities must extend
+[`Serialized`](database-driver-api/src/main/java/de/lino/database/database/entity/Serialized.java),
+which supplies `keysOf()`/`primaryKey()`/`hasKey(String)` for lookups. For `FactoryType.DATABASE`,
+each entity's fully qualified class name is persisted alongside its JSON payload, so `findEntity`
+and `getEntities` can reconstruct it generically on read - unlike `DatabaseSection` itself
+(see [Working with a `DatabaseSection`](#databasedriver-api) above), no `Class` token needs to be
+passed in by the caller.
+
+```java
+import de.lino.database.database.factory.DefaultEntityFactory;
+import de.lino.database.database.factory.EntityFactory;
+import de.lino.database.database.factory.FactoryType;
+
+// Any application-defined enum works as the grouping tag - no shared interface needed.
+enum MyEntityType {
+    EXAMS
+}
+
+// Cache-only: every FactoryType.DATABASE-routed call throws UnsupportedOperationException.
+final EntityFactory cacheOnly = new DefaultEntityFactory();
+
+// Backed by a DatabaseProvider (see "Working with the DatabaseRepository" above) - supports both.
+final EntityFactory entityFactory = new DefaultEntityFactory(databaseProvider);
+
+final Exam exam = new Exam("Datenbanksysteme", "2.3"); // any Serialized subclass
+
+// Register in-memory only.
+entityFactory.registerEntities(FactoryType.CACHE, MyEntityType.EXAMS, exam);
+
+// Persist instead - the database section is named after MyEntityType.EXAMS.name(), i.e. "EXAMS".
+entityFactory.registerEntities(FactoryType.DATABASE, MyEntityType.EXAMS, exam);
+
+// Look an entity up by any of its Serialized#keysOf() values, e.g. its primary key.
+final Optional<Exam> cachedExam    = entityFactory.findEntity(FactoryType.CACHE, MyEntityType.EXAMS, "Datenbanksysteme");
+final Optional<Exam> persistedExam = entityFactory.findEntity(FactoryType.DATABASE, MyEntityType.EXAMS, "Datenbanksysteme");
+
+// Read every entity registered under a tag.
+final List<Exam> cachedExams    = entityFactory.getEntities(FactoryType.CACHE, MyEntityType.EXAMS);
+final List<Exam> persistedExams = entityFactory.getEntities(FactoryType.DATABASE, MyEntityType.EXAMS);
+
+// Remove entities again; only the ones actually found (and thus removed) are returned.
+final List<Exam> removedFromCache    = entityFactory.unregisterEntities(FactoryType.CACHE, MyEntityType.EXAMS, exam);
+final List<Exam> removedFromDatabase = entityFactory.unregisterEntities(FactoryType.DATABASE, MyEntityType.EXAMS, exam);
 ```
 
 ## License
