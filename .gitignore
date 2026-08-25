@@ -43,3 +43,4 @@ token.env
 ### Maven ###
 qodana.yaml
 /.github/workflows/qodana_code_quality.yml
+CLAUDE.md
