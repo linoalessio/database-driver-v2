@@ -17,8 +17,8 @@ The project is split into two Maven modules:
 
 | **Module**                | **Artifact**            | **Contents**                                                                                                                                                    |
 |----------------------------|--------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `database-driver-api`      | `database-driver-api`    | The public API: `DatabaseRepository`, `DatabaseProvider`, `DatabaseSection`, `DatabaseEntry`, `Credentials`, the JSON document model (`JsonDocument`), the driver's exceptions, the `Cache`/`ClusteredCache` contracts, and the generic `EntityFactory`/`FactoryType` entity registry. |
-| `database-driver-plugin`   | `database-driver-plugin` | The concrete implementation: `DatabaseRepositoryRegistry`, one `DatabaseProvider`/`DatabaseSection` pair per supported database technology, the default `Cache`/`ClusteredCache` implementations, and `DefaultEntityFactory`.                    |
+| `database-driver-api`      | `database-driver-api`    | The public API: `DatabaseRepository`, `DatabaseProvider`, `DatabaseSection`, `DatabaseEntry`, `Credentials`, the JSON document model (`JsonDocument`), the driver's exceptions, the `Cache`/`ClusteredCache` contracts, the generic `EntityFactory`/`FactoryType` entity registry, and the `DatabaseNotification` push-notification contract. |
+| `database-driver-plugin`   | `database-driver-plugin` | The concrete implementation: `DatabaseRepositoryRegistry`, one `DatabaseProvider`/`DatabaseSection` pair per supported database technology, the default `Cache`/`ClusteredCache` implementations, `DefaultEntityFactory`, and `PostgresDatabaseNotification` (the Postgres `LISTEN`/`NOTIFY` implementation of `DatabaseNotification`).                    |
 
 You depend on `database-driver-api` at compile time to program against the interfaces, and on
 `database-driver-plugin` at runtime to actually obtain a working `DatabaseRepository`.
@@ -518,6 +518,60 @@ final List<Exam> persistedExams = entityFactory.getEntities(FactoryType.DATABASE
 // Remove entities again; only the ones actually found (and thus removed) are returned.
 final List<Exam> removedFromCache    = entityFactory.unregisterEntities(FactoryType.CACHE, MyEntityType.EXAMS, exam);
 final List<Exam> removedFromDatabase = entityFactory.unregisterEntities(FactoryType.DATABASE, MyEntityType.EXAMS, exam);
+```
+
+--- ---
+
+## Using `DatabaseNotification`
+
+Applications that need to react to a row being written the instant it happens — rather than
+polling a table on a timer — can use `DatabaseNotification`: same api/plugin split as the rest
+of this driver (see [Project Structure](#project-structure)) —
+[`DatabaseNotification`](database-driver-api/src/main/java/de/lino/database/database/notification/DatabaseNotification.java)
+is the contract, and
+[`PostgresDatabaseNotification`](database-driver-plugin/src/main/java/de/lino/database/database/sql/postgresql/PostgresDatabaseNotification.java)
+is currently its only implementation, built on Postgres's own `LISTEN`/`NOTIFY`. There is
+deliberately no vendor-agnostic implementation behind this contract — `LISTEN`/`NOTIFY` (and
+each other backend's equivalent push primitive) differs too much across vendors to unify, so
+implementations live under their own vendor package in `database-driver-plugin`, the same way
+the NoSQL `DatabaseProvider`/`DatabaseSection` pairs do (see
+[Supported SQL and NoSQL Databases](#supported-sql-and-nosql-databases)).
+
+`PostgresDatabaseNotification` needs two separate things from a table before it can notify on
+it: a **trigger**, installed once via `watch`, and a **listener**, started via `start`. `watch`
+installs an idempotent `AFTER INSERT OR UPDATE` trigger per entity type (table name = the
+entity class's simple name) that `pg_notify`s a small JSON payload (`table`, `operation`, `id`
+— never the row's own data) on the given channel; all of the DDL it issues runs as one
+transaction, so a failure partway through can never leave a table with a half-installed
+trigger. `start` opens one dedicated, non-pooled JDBC connection and blocks a daemon thread on
+it indefinitely, invoking a callback once per notification in the order received — a real
+blocking socket read, not a poll loop. `watch` can be called before, after, or concurrently
+with a running `start` listener; a brand-new entity type persisted after `start` was already
+called needs its own `watch` call to start notifying. The trigger `watch` installs assumes the
+exact `(id TEXT, data BYTEA)` schema `SQLDatabaseSection` creates for every table, so re-verify
+that assumption against whichever `database-driver-plugin` version is pinned if it's ever
+bumped.
+
+```java
+import de.lino.database.database.notification.DatabaseNotification;
+import de.lino.database.database.sql.postgresql.PostgresDatabaseNotification;
+
+// credentials must point at the same Postgres database the watched tables live in.
+final DatabaseNotification notification = new PostgresDatabaseNotification(credentials, "entry_changes");
+
+// Install the trigger on each entity type's table - call once per type, after
+// DatabaseProvider#createSection has already run for it.
+notification.watch(Exam.class); // Exam extends Serialized, see "Using EntityFactory" above
+
+// Start listening; onNotification fires once per row write, from any writer, any process.
+// Each payload has "table", "operation" and "id" keys - never the row's own data.
+notification.start(payload -> System.out.println(payload.getString("table") + " " + payload.getString("operation") + " " + payload.getString("id")));
+
+notification.isRunning(); // true once start() has returned successfully
+notification.getChannel(); // "entry_changes"
+
+// Stop listening and release the dedicated connection; start() can be called again afterward.
+notification.shutdown();
 ```
 
 --- ---

@@ -11,6 +11,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
@@ -126,6 +127,37 @@ public class SQLExecution {
         }
 
         return defaultValue;
+    }
+
+    /**
+     * Runs each of {@code statements} in order on a single connection, inside one transaction -
+     * either all of them commit or, if any one throws, none of them do. This exists alongside
+     * {@link #executeUpdate}, which logs and swallows a failed statement, because some callers
+     * (e.g. installing a function/drop/create-trigger sequence) need "all or nothing": letting
+     * such a sequence continue past a failed statement would leave the schema in a state no
+     * single statement here ever intended - a trigger dropped but never recreated, for example.
+     * Unlike {@link #executeUpdate}, this throws rather than swallowing, since the caller is the
+     * one positioned to decide whether a partially-applied sequence is recoverable.
+     *
+     * @param statements the SQL statements to run, in order, on the same transaction
+     * @throws SQLException if any statement fails; the transaction is rolled back before this is thrown
+     */
+    public void executeTransaction(@NotNull String... statements) throws SQLException {
+
+        try (Connection connection = this.hikariDataSource.getConnection()) {
+
+            connection.setAutoCommit(false);
+
+            try (Statement statement = connection.createStatement()) {
+                for (String sql : statements) statement.execute(sql);
+                connection.commit();
+            } catch (final SQLException exception) {
+                connection.rollback();
+                throw exception;
+            }
+
+        }
+
     }
 
     /**
