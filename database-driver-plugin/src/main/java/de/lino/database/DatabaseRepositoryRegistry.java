@@ -113,9 +113,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
         this.databaseProviders.forEach((key, value) -> {
             try {
                 value.second().shutdown();
-                System.out.println("Database Provider with id #" + key + " (" + value.first() + ") successfully unregistered");
             } catch (final RuntimeException exception) {
-                System.err.println("Database Provider with id #" + key + " (" + value.first() + ") failed to shut down cleanly:");
                 exception.printStackTrace();
             }
         });
@@ -175,7 +173,6 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
         });
 
-        System.out.println("Database Provider with id #" + sourceId + " (" + sourceType + ") successfully converted to database with id #" + targetId + " (" + targetPair.first() + ")");
         return new Pair<>(source, destination);
     }
 
@@ -193,7 +190,6 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
             return new Pair<>(databaseType, createProvider(databaseType, credentials));
         });
 
-        System.out.println("Database Provider with id #" + id + " (" + databaseType + ") successfully registered");
         return registered.second();
     }
 
@@ -205,7 +201,6 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
         final DatabaseProvider unregistered = pair.second();
         unregistered.shutdown();
-        System.out.println("Database Provider with id #" + id + " (" + pair.first() + ") successfully unregistered");
 
         return unregistered;
 
