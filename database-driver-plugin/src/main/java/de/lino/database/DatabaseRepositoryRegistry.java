@@ -218,6 +218,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
      */
     @NotNull
     private static DatabaseProvider createProvider(@NotNull final DatabaseType databaseType, @NotNull final Credentials credentials) {
+
         return switch (databaseType) {
 
             case MY_SQL -> new MySQLDatabaseProvider(credentials);
