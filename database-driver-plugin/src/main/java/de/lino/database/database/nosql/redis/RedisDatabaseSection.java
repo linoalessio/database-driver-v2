@@ -28,6 +28,20 @@ import java.util.Optional;
 public class RedisDatabaseSection implements DatabaseSection {
 
     /**
+     * The Redis Pub/Sub channel every {@link #insert}/{@link #update} call unconditionally
+     * {@code PUBLISH}es a change notification to, in the exact {@code {"table", "operation",
+     * "id"}} JSON shape {@code PostgresDatabaseNotification}'s own trigger function emits, so a
+     * consumer needs no special-casing between the two backends. This is one fixed channel shared
+     * by every {@link RedisDatabaseSection} on a given Redis instance, not a per-section or
+     * per-provider setting - unlike Postgres, which binds an arbitrary, caller-chosen channel to
+     * each table via its own trigger, Redis has no server-side trigger concept to bind a channel
+     * to a key prefix with, so there is nothing to make this configurable per instance. A
+     * {@code RedisDatabaseNotification} must be constructed with this exact channel name to
+     * observe these publishes.
+     */
+    public static final String CHANGE_NOTIFICATION_CHANNEL = "database-driver-changes";
+
+    /**
      * The connection pool shared with this section's owning {@link RedisDatabaseProvider} and
      * every one of its sibling sections.
      */
@@ -112,6 +126,7 @@ public class RedisDatabaseSection implements DatabaseSection {
         // so its already-unwrapped getMetaData() is used instead, matching update() below.
         try (final Jedis jedis = jedisPool.getResource()) {
             jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
+            this.publishChangeNotification(jedis, "INSERT", databaseEntry.getId());
         }
 
         DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
@@ -126,6 +141,7 @@ public class RedisDatabaseSection implements DatabaseSection {
         final String key = this.name + ":" + databaseEntry.getId();
         try (final Jedis jedis = jedisPool.getResource()) {
             jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
+            this.publishChangeNotification(jedis, "UPDATE", databaseEntry.getId());
         }
 
         this.entries.put(databaseEntry.getId(), databaseEntry);
@@ -176,6 +192,27 @@ public class RedisDatabaseSection implements DatabaseSection {
     @Override
     public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
         return Optional.ofNullable(this.entries.get(id));
+    }
+
+    /**
+     * {@code PUBLISH}es a {@code {"table", "operation", "id"}} change notification on
+     * {@link #CHANGE_NOTIFICATION_CHANNEL}, reusing the same {@code jedis} connection the calling
+     * write already borrowed rather than checking out a second one. Unconditional - {@code
+     * PUBLISH} to a channel with zero subscribers is a cheap, single round trip in Redis, so this
+     * runs on every write with no "is anyone listening" gate.
+     *
+     * @param jedis     the connection to publish through, borrowed by the caller
+     * @param operation {@code "INSERT"} or {@code "UPDATE"}, matching the values {@code
+     *                  PostgresDatabaseNotification}'s trigger function emits for the same cases
+     * @param id        the written entry's id
+     */
+    private void publishChangeNotification(@NotNull final Jedis jedis, @NotNull final String operation, @NotNull final String id) {
+        final String payload = new JsonDocument()
+                .append("table", this.name)
+                .append("operation", operation)
+                .append("id", id)
+                .toJson();
+        jedis.publish(CHANGE_NOTIFICATION_CHANNEL, payload);
     }
 
     @Override

@@ -36,6 +36,14 @@ public class RedisDatabaseProvider implements DatabaseProvider {
     private final Map<String, DatabaseSection> databaseSections;
 
     /**
+     * Lazily constructed by {@link #counterService()}; {@code volatile} plus double-checked
+     * locking there so concurrent first-callers can't each construct and race to publish their
+     * own instance - both cheap to guard against and worth guarding, since every caller must end
+     * up sharing the exact same {@link JedisRedisCounterService}, not one each.
+     */
+    private volatile RedisCounterService counterService;
+
+    /**
      * Connects to a Redis database with {@code credentials} and loads every existing key prefix
      * as a {@link RedisDatabaseSection}.
      *
@@ -150,6 +158,31 @@ public class RedisDatabaseProvider implements DatabaseProvider {
     public void clear() {
         for (DatabaseSection databaseSection : this.getSections()) databaseSection.clear();
         this.databaseSections.clear();
+    }
+
+    /**
+     * Returns this provider's {@link RedisCounterService}, constructing it on first call and
+     * reusing that same instance afterward. The returned service shares {@link #jedisPool} with
+     * every {@link RedisDatabaseSection} this provider manages, rather than opening a second,
+     * independent {@link JedisPool} against the same Redis instance.
+     *
+     * @return this provider's lazily-constructed, shared {@link RedisCounterService}
+     */
+    public @NotNull RedisCounterService counterService() {
+
+        RedisCounterService service = this.counterService;
+        if (service != null) return service;
+
+        synchronized (this) {
+            service = this.counterService;
+            if (service == null) {
+                service = new JedisRedisCounterService(this.jedisPool);
+                this.counterService = service;
+            }
+        }
+
+        return service;
+
     }
 
 }
