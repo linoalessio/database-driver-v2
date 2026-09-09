@@ -130,6 +130,59 @@ public class SQLExecution {
     }
 
     /**
+     * Runs a parameterized {@code SELECT} statement like
+     * {@link #executeQuery(String, Function, Object, Object...)}, but streams the result set
+     * from the server in {@code fetchSize}-row batches instead of buffering every row in memory
+     * before {@code function} sees the first one. This exists because {@link #executeQuery}
+     * (via the JDBC driver's default behavior) materializes the complete result set up front -
+     * for a query like "every row of a multi-gigabyte table" that buffered copy alone can
+     * exceed the whole heap, on top of whatever {@code function} builds from it. Auto-commit is
+     * disabled for the duration of the statement (PostgreSQL only honors a fetch size inside a
+     * transaction) and restored before the connection returns to the pool.
+     *
+     * @param <T>          the type {@code function} maps the result set to
+     * @param query        the parameterized SQL query to execute
+     * @param fetchSize    how many rows to fetch from the server per round trip
+     * @param function     maps the query's result set to the returned value; its own unchecked
+     *                     exceptions are caught and treated the same as a failed query
+     * @param defaultValue the value returned if the query fails, or if {@code function} throws
+     * @param objects      the values to bind, in placeholder order
+     * @return {@code function}'s result, or {@code defaultValue} if the query or {@code function} failed
+     */
+    public <T> T executeStreamingQuery(@NotNull String query, int fetchSize, @NotNull Function<ResultSet, T> function, @NotNull T defaultValue, @NonNls Object... objects) {
+
+        try (Connection connection = this.hikariDataSource.getConnection()) {
+
+            connection.setAutoCommit(false);
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+
+                preparedStatement.setFetchSize(fetchSize);
+
+                int i = 1;
+                for (Object object : objects) {
+                    if (object instanceof byte[]) preparedStatement.setBytes(i++, (byte[]) object);
+                    else preparedStatement.setObject(i++, object);
+                }
+
+                try (final ResultSet resultSet = preparedStatement.executeQuery()) {
+                    return function.apply(resultSet);
+                } catch (final RuntimeException exception) {
+                    return defaultValue;
+                }
+
+            } finally {
+                connection.setAutoCommit(true);
+            }
+
+        } catch (final SQLException exception) {
+            exception.printStackTrace();
+        }
+
+        return defaultValue;
+    }
+
+    /**
      * Runs each of {@code statements} in order on a single connection, inside one transaction -
      * either all of them commit or, if any one throws, none of them do. This exists alongside
      * {@link #executeUpdate}, which logs and swallows a failed statement, because some callers

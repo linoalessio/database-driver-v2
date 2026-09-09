@@ -79,10 +79,21 @@ public class SQLDatabaseSection implements DatabaseSection {
     }
 
     /**
+     * How many rows {@link #reload()} fetches from the server per round trip. Bounds reload's
+     * transient memory to roughly this many rows' raw bytes on top of {@link #entries} itself -
+     * without it, the JDBC driver buffers the complete table in memory before the first row is
+     * even parsed, which for a multi-gigabyte table is a boot-time OutOfMemoryError (and the
+     * half-read connection it leaves behind desyncs with a "Unexpected packet type" error on
+     * its next use).
+     */
+    private static final int RELOAD_FETCH_SIZE = 256;
+
+    /**
      * {@inheritDoc}
      * <p>
      * Discards {@link #entries} entirely and re-populates it from every row currently
-     * in this section's table, the same query the constructor itself runs.
+     * in this section's table, the same query the constructor itself runs. Rows are streamed
+     * in {@link #RELOAD_FETCH_SIZE}-row batches, never buffered whole.
      */
     @Override
     @SneakyThrows
@@ -90,7 +101,7 @@ public class SQLDatabaseSection implements DatabaseSection {
 
         this.entries.clear();
 
-        this.sqlExecution.executeQueryAsync("SELECT * FROM " + this.name, resultSet -> {
+        this.sqlExecution.executeStreamingQuery("SELECT * FROM " + this.name, RELOAD_FETCH_SIZE, resultSet -> {
 
             try {
 
@@ -115,7 +126,7 @@ public class SQLDatabaseSection implements DatabaseSection {
             }
 
             return true;
-        }, true).get();
+        }, true);
 
     }
 
