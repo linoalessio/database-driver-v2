@@ -4,6 +4,7 @@ import com.google.common.collect.Maps;
 import de.lino.database.database.auth.Credentials;
 import de.lino.database.database.DatabaseProvider;
 import de.lino.database.database.DatabaseSection;
+import de.lino.database.database.notification.RedisCounterService;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
 import redis.clients.jedis.Jedis;

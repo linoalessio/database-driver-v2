@@ -1,5 +1,6 @@
 package de.lino.database.database.nosql.redis;
 
+import de.lino.database.database.notification.RedisCounterService;
 import org.jetbrains.annotations.NotNull;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;

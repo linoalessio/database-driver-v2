@@ -1,4 +1,4 @@
-package de.lino.database.database.nosql.redis;
+package de.lino.database.database.notification;
 
 import org.jetbrains.annotations.NotNull;
 
