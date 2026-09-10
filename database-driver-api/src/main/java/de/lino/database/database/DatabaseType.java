@@ -45,6 +45,15 @@ public enum DatabaseType {
     CSV("csv", "NULL"),
 
     /**
+     * A local, file-based TOML store (one directory per section, one {@code <id>.toml} file
+     * per entry); not backed by any JDBC driver. Same layout as the JSON store, but the files
+     * are TOML - readable and hand-editable configuration syntax - at the price of TOML's
+     * model limits (no {@code null} values, homogeneous arrays only; see the store's own
+     * documentation).
+     */
+    TOML("toml", "NULL"),
+
+    /**
      * MariaDB, accessed through its JDBC driver.
      */
     MARIA_DB("mariadb", "org.mariadb.jdbc.Driver"),

@@ -161,7 +161,15 @@
             <version>5.5.1</version>
         </dependency>
 
-        <!-- Engine/cache-mode tests against the server-less backends (JSON, CSV, SQLite) -->
+        <!-- TOML parsing/writing for de.lino.database.database.nosql.toml (the TOML file store);
+             depends only on Gson, which is already on the classpath via database-driver-api -->
+        <dependency>
+            <groupId>com.moandjiezana.toml</groupId>
+            <artifactId>toml4j</artifactId>
+            <version>0.7.2</version>
+        </dependency>
+
+        <!-- Engine/cache-mode tests against the server-less backends (JSON, CSV, TOML, SQLite) -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

@@ -12,6 +12,7 @@ import de.lino.database.database.nosql.json.JsonDatabaseProvider;
 import de.lino.database.database.nosql.mongodb.MongoDBDatabaseProvider;
 import de.lino.database.database.nosql.redis.RedisDatabaseProvider;
 import de.lino.database.database.nosql.rethinkdb.RethinkDBDatabaseProvider;
+import de.lino.database.database.nosql.toml.TOMLDatabaseProvider;
 import de.lino.database.database.sql.derby.ApacheDerbyDatabaseProvider;
 import de.lino.database.database.sql.h2db.H2DatabaseProvider;
 import de.lino.database.database.sql.mariadb.MariaDBDatabaseProvider;
@@ -350,6 +351,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
 
             case JSON -> new JsonDatabaseProvider(credentials);
             case CSV ->  new CSVDatabaseProvider(credentials);
+            case TOML -> new TOMLDatabaseProvider(credentials);
 
         };
     }
