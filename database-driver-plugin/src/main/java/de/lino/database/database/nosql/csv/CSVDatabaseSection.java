@@ -1,6 +1,8 @@
 package de.lino.database.database.nosql.csv;
 
 import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.CacheMode;
+import de.lino.database.database.SectionConfig;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.json.file.FileProvider;
 import de.lino.database.database.DatabaseSection;
@@ -42,18 +44,35 @@ public class CSVDatabaseSection extends AbstractCachedDatabaseSection {
     private final Path file;
 
     /**
-     * Creates (if not already present) {@code file} and loads its existing rows into the
-     * inherited in-memory view, via {@link #reload()}.
+     * Creates (if not already present) {@code file} and loads its existing rows into memory
+     * immediately - the historical constructor, kept with its exact loaded-once-constructed
+     * semantics for anyone instantiating sections directly rather than through a provider.
      *
      * @param name this section's file name, without the {@code .csv} extension
      * @param file the CSV file this section wraps
      */
     public CSVDatabaseSection(@NotNull final String name, @NotNull final Path file) {
+        this(name, file, SectionConfig.full());
+        this.warmUp();
+    }
 
-        super(name);
+    /**
+     * Creates (if not already present) {@code file}. No row is read here - whether and when
+     * rows are loaded is the engine's decision per {@code config}, with the owning provider
+     * triggering the {@link CacheMode#FULL} warm-up right after construction. The file itself
+     * is still created eagerly, so a freshly created section exists on disk (and survives a
+     * provider {@code reload()}) even before anything touches its data.
+     *
+     * @param name   this section's file name, without the {@code .csv} extension
+     * @param file   the CSV file this section wraps
+     * @param config how this section holds entries in memory
+     */
+    public CSVDatabaseSection(@NotNull final String name, @NotNull final Path file, @NotNull final SectionConfig config) {
+
+        super(name, config);
         this.file = file;
 
-        this.reload();
+        FileProvider.getInstance().createFile(this.file);
 
     }
 

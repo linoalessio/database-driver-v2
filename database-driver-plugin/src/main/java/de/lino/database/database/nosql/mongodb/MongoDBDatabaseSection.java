@@ -5,6 +5,8 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
 import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.CacheMode;
+import de.lino.database.database.SectionConfig;
 import de.lino.database.database.exception.NoSuchDataFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.database.DatabaseSection;

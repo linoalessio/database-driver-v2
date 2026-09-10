@@ -21,14 +21,20 @@ import de.lino.database.database.sql.orcale.OracleSQLDatabaseProvider;
 import de.lino.database.database.sql.postgresql.PostgreSQLDatabaseProvider;
 import de.lino.database.database.sql.sqlite.SQLiteDatabaseProvider;
 import de.lino.database.utils.Pair;
+import de.lino.database.utils.cache.Cache;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.WeakHashMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The concrete, process-wide {@link DatabaseRepository}: tracks every registered
@@ -82,6 +88,109 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
     }
 
     /**
+     * How often {@link #sweepExpiredCacheEntries()} runs, in seconds. {@link Cache#evictExpired()}
+     * is an O(n) full scan by contract, so it must run on a timer rather than on the hot path -
+     * and 60 seconds keeps a TTL-expired entry's worst-case extra lifetime in the same order of
+     * magnitude as typical TTLs while making the scan's cost negligible.
+     */
+    private static final long TTL_SWEEP_PERIOD_SECONDS = 60;
+
+    /**
+     * Every TTL-bearing {@link Cache} currently subject to periodic {@link Cache#evictExpired()}
+     * sweeps, registered by cache-mode-configured database sections. Weakly keyed on purpose:
+     * a section replaced under a new configuration (or discarded with its provider) must not
+     * keep its abandoned cache - and the entries that cache pins - alive through this registry;
+     * once nothing else references the cache it simply drops out of the sweep. All access is
+     * synchronized on the map itself, {@link WeakHashMap} not being thread-safe.
+     */
+    private static final Map<Cache<?, ?>, Boolean> TTL_SWEPT_CACHES = new WeakHashMap<>();
+
+    /**
+     * The single shared daemon thread running {@link #sweepExpiredCacheEntries()}; created
+     * lazily by {@link #scheduleTtlSweeps} when the first TTL-configured cache appears - a
+     * process that never configures a TTL never pays for the thread - and stopped again by
+     * {@link #shutdown()}/{@link #shutdownAsync()}. Daemon so a consumer that forgets to shut
+     * the repository down is not kept alive by cache housekeeping. {@code volatile} for the
+     * lazy double-checked creation.
+     */
+    private static volatile ScheduledExecutorService ttlSweeper;
+
+    /**
+     * Registers {@code cache} for periodic {@link Cache#evictExpired()} sweeps, starting the
+     * shared sweeper thread if this is the first TTL-bearing cache of the process. Called by
+     * the caching engine for every section configured with a TTL; without this, an expired
+     * entry would only ever leave memory when its own key happens to be touched again, letting
+     * a bounded-but-idle section pin expired data indefinitely.
+     *
+     * @param cache the cache to sweep periodically; held weakly, so registration never extends
+     *              the cache's lifetime
+     */
+    public static void scheduleTtlSweeps(@NotNull final Cache<?, ?> cache) {
+
+        synchronized (TTL_SWEPT_CACHES) {
+            TTL_SWEPT_CACHES.put(cache, Boolean.TRUE);
+        }
+
+        if (ttlSweeper != null) return;
+
+        synchronized (DatabaseRepositoryRegistry.class) {
+            if (ttlSweeper == null) {
+                final ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(runnable -> {
+                    final Thread thread = new Thread(runnable, "database-driver-ttl-sweeper");
+                    thread.setDaemon(true);
+                    return thread;
+                });
+                sweeper.scheduleAtFixedRate(DatabaseRepositoryRegistry::sweepExpiredCacheEntries, TTL_SWEEP_PERIOD_SECONDS, TTL_SWEEP_PERIOD_SECONDS, TimeUnit.SECONDS);
+                ttlSweeper = sweeper;
+            }
+        }
+
+    }
+
+    /**
+     * One sweep pass: {@link Cache#evictExpired()} on every registered cache, each guarded so
+     * one misbehaving cache cannot kill the shared sweeper thread (a
+     * {@link ScheduledExecutorService} silently cancels a task that throws).
+     */
+    private static void sweepExpiredCacheEntries() {
+
+        final List<Cache<?, ?>> snapshot;
+        synchronized (TTL_SWEPT_CACHES) {
+            snapshot = new ArrayList<>(TTL_SWEPT_CACHES.keySet());
+        }
+
+        for (final Cache<?, ?> cache : snapshot) {
+            try {
+                cache.evictExpired();
+            } catch (final RuntimeException exception) {
+                exception.printStackTrace();
+            }
+        }
+
+    }
+
+    /**
+     * Stops the shared TTL sweeper and forgets every registered cache, as part of shutting the
+     * repository down. Safe against a later revival: if a new TTL-configured section appears
+     * after this, {@link #scheduleTtlSweeps} simply starts a fresh sweeper.
+     */
+    private static void stopTtlSweeper() {
+
+        final ScheduledExecutorService sweeper;
+        synchronized (DatabaseRepositoryRegistry.class) {
+            sweeper = ttlSweeper;
+            ttlSweeper = null;
+        }
+
+        if (sweeper != null) sweeper.shutdownNow();
+
+        synchronized (TTL_SWEPT_CACHES) {
+            TTL_SWEPT_CACHES.clear();
+        }
+
+    }
+
+    /**
      * Prints {@code document}'s serialized size in bytes under {@code message}, if
      * {@link #LOG_BYTES} is enabled; a no-op otherwise, checked before {@code document} is ever
      * serialized so disabled logging costs nothing beyond the flag check.
@@ -119,6 +228,7 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
         });
 
         this.databaseProviders.clear();
+        stopTtlSweeper();
 
     }
 
@@ -138,7 +248,10 @@ public class DatabaseRepositoryRegistry extends DatabaseRepository {
                 .map(databaseTypeDatabaseProviderPair -> databaseTypeDatabaseProviderPair.second().shutdownAsync())
                 .toList();
 
-        return CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new)).thenRun(this.databaseProviders::clear);
+        return CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new)).thenRun(() -> {
+            this.databaseProviders.clear();
+            stopTtlSweeper();
+        });
 
     }
 

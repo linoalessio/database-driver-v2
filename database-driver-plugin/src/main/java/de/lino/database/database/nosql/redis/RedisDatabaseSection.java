@@ -1,6 +1,8 @@
 package de.lino.database.database.nosql.redis;
 
 import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.CacheMode;
+import de.lino.database.database.SectionConfig;
 import de.lino.database.database.exception.NoSuchDataFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.database.DatabaseSection;
@@ -52,18 +54,32 @@ public class RedisDatabaseSection extends AbstractCachedDatabaseSection {
     private final JedisPool jedisPool;
 
     /**
-     * Loads every existing {@code "<name>:*"} key into the inherited in-memory view, via
-     * {@link #reload()}.
+     * Loads every existing {@code "<name>:*"} key into memory immediately - the historical
+     * constructor, kept with its exact loaded-once-constructed semantics for anyone
+     * instantiating sections directly rather than through a provider.
      *
      * @param jedisPool the connection pool to run every command through
      * @param name      this section's key prefix
      */
     public RedisDatabaseSection(@NotNull final JedisPool jedisPool, @NotNull final String name) {
+        this(jedisPool, name, SectionConfig.full());
+        this.warmUp();
+    }
 
-        super(name);
+    /**
+     * Prepares the section without touching Redis at all - a key prefix needs no server-side
+     * container, and whether and when keys are read is the engine's decision per
+     * {@code config}, with the owning provider triggering the {@link CacheMode#FULL} warm-up
+     * right after construction.
+     *
+     * @param jedisPool the connection pool to run every command through
+     * @param name      this section's key prefix
+     * @param config    how this section holds entries in memory
+     */
+    public RedisDatabaseSection(@NotNull final JedisPool jedisPool, @NotNull final String name, @NotNull final SectionConfig config) {
+
+        super(name, config);
         this.jedisPool = jedisPool;
-
-        this.reload();
 
     }
 

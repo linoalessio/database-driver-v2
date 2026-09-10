@@ -1,6 +1,8 @@
 package de.lino.database.database.nosql.json;
 
 import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.CacheMode;
+import de.lino.database.database.SectionConfig;
 import de.lino.database.database.auth.Credentials;
 import de.lino.database.database.exception.NoSuchDataFound;
 import de.lino.database.database.exception.NoSuchEntryFound;
@@ -40,20 +42,39 @@ public class JsonDatabaseSection extends AbstractCachedDatabaseSection {
     private final Path parent;
 
     /**
-     * Creates (if not already present) {@link #parent} and loads its existing entries into the
-     * inherited in-memory view, via {@link #reload()}.
+     * Creates (if not already present) {@link #parent} and loads its existing entries into
+     * memory immediately - the historical constructor, kept with its exact
+     * loaded-once-constructed semantics for anyone instantiating sections directly rather than
+     * through a provider.
      *
      * @param name        this section's directory name
      * @param credentials the login credentials, providing the file repository root this
      *                    section's directory lives under
      */
     public JsonDatabaseSection(@NotNull String name, @NotNull Credentials credentials) {
+        this(name, credentials, SectionConfig.full());
+        this.warmUp();
+    }
 
-        super(name);
+    /**
+     * Creates (if not already present) {@link #parent}. No entry is read here - whether and
+     * when entries are loaded is the engine's decision per {@code config}, with the owning
+     * provider triggering the {@link CacheMode#FULL} warm-up right after construction. The
+     * directory itself is still created eagerly, so a freshly created section exists on disk
+     * (and survives a provider {@code reload()}) even before anything touches its data.
+     *
+     * @param name        this section's directory name
+     * @param credentials the login credentials, providing the file repository root this
+     *                    section's directory lives under
+     * @param config      how this section holds entries in memory
+     */
+    public JsonDatabaseSection(@NotNull String name, @NotNull Credentials credentials, @NotNull SectionConfig config) {
+
+        super(name, config);
         this.credentials = credentials;
         this.parent = Paths.get(credentials.getFileRepository(), name);
 
-        this.reload();
+        FileProvider.getInstance().createDirectory(this.parent);
 
     }
 

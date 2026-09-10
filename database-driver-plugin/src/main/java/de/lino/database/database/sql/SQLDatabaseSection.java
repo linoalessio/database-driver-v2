@@ -1,6 +1,8 @@
 package de.lino.database.database.sql;
 
 import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.CacheMode;
+import de.lino.database.database.SectionConfig;
 import de.lino.database.database.exception.NoSuchDataFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.database.DatabaseSection;
@@ -35,17 +37,35 @@ public class SQLDatabaseSection extends AbstractCachedDatabaseSection {
 
     /**
      * Creates (if not already present) this section's table and loads its existing rows into
-     * the inherited in-memory view, via {@link #reload()}.
+     * memory immediately - the historical constructor, kept with its exact
+     * loaded-once-constructed semantics for anyone instantiating sections directly rather than
+     * through a provider.
      *
      * @param databaseType the SQL vendor {@code sqlExecution} is connected to, used to pick this
      *                     vendor's BLOB column type
      * @param name         this section's table name
      * @param sqlExecution the connection pool to run every query and update through
      */
-    @SneakyThrows
     public SQLDatabaseSection(@NotNull DatabaseType databaseType, @NotNull String name, @NotNull SQLExecution sqlExecution) {
+        this(databaseType, name, sqlExecution, SectionConfig.full());
+        this.warmUp();
+    }
 
-        super(name);
+    /**
+     * Creates (if not already present) this section's table. No row is read here - whether and
+     * when rows are loaded is the engine's decision per {@code config}, with the owning
+     * provider triggering the {@link CacheMode#FULL} warm-up right after construction.
+     *
+     * @param databaseType the SQL vendor {@code sqlExecution} is connected to, used to pick this
+     *                     vendor's BLOB column type
+     * @param name         this section's table name
+     * @param sqlExecution the connection pool to run every query and update through
+     * @param config       how this section holds entries in memory
+     */
+    @SneakyThrows
+    public SQLDatabaseSection(@NotNull DatabaseType databaseType, @NotNull String name, @NotNull SQLExecution sqlExecution, @NotNull SectionConfig config) {
+
+        super(name, config);
         this.sqlExecution = sqlExecution;
 
         String sqlStatement = "";
@@ -59,7 +79,6 @@ public class SQLDatabaseSection extends AbstractCachedDatabaseSection {
         }
 
         this.sqlExecution.executeUpdateAsync("CREATE TABLE IF NOT EXISTS " + name + " (id TEXT, data " + sqlStatement + ");").get();
-        this.reload();
 
     }
 
