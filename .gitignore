@@ -3,8 +3,6 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
-pomBackUps
-
 ### IntelliJ IDEA ###
 .idea/
 .idea/*.xml
@@ -39,11 +37,7 @@ build/
 
 ### Secrets ###
 token.env
+release-and-package.sh
 
-### Maven ###
-qodana.yaml
-/.github/workflows/qodana_code_quality.yml
+### AI ###
 CLAUDE.md
-
-architecture
-architecture/*

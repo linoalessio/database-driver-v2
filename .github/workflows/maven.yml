@@ -1,0 +1,41 @@
+# This workflow will build a Java project with Maven, and cache/restore any dependencies to
+# improve the workflow execution time. It replaces the retired Jenkins pipeline as this repo's
+# CI build.
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-maven
+
+name: Java CI with Maven
+
+on:
+  push:
+    branches: [ "master" ]
+    paths-ignore:
+      - '**/*.md'
+  pull_request:
+    branches: [ "master" ]
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        # JDK 21 exactly: Lombok's annotation processor does not run under newer JDKs on this
+        # project, and both modules' maven-compiler-plugin hardcodes source/target 21.
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        # Root pom.xml is a two-module reactor (database-driver-api, database-driver-plugin);
+        # this builds both in dependency order and runs any test suites that exist (none today -
+        # new ones are picked up automatically). No registry credentials are needed, unlike
+        # cloud-driver's maven.yml: every dependency here resolves from Maven Central.
+        run: mvn -B package --file pom.xml

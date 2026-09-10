@@ -1,0 +1,53 @@
+# This workflow will build a package using Maven and then publish it to GitHub Packages when a
+# release is created. It is the publish half of ./release-and-package.sh: the script creates the
+# GitHub release and then watches this workflow's run - the actual `mvn deploy` happens only
+# here, never locally.
+# For more information see: https://github.com/actions/setup-java/blob/main/docs/advanced-usage.md#Publishing-using-Apache-Maven
+
+name: Maven Package
+
+on:
+  release:
+    types: [ created ]
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        # JDK 21 exactly: Lombok's annotation processor does not run under newer JDKs on this
+        # project, and both modules' maven-compiler-plugin hardcodes source/target 21. The
+        # server-id must match the root pom.xml's <distributionManagement> repository id
+        # ("github"); setup-java writes the matching <server> entry into ~/.m2/settings.xml,
+        # reading its username/password from the env vars set on the deploy step below. One
+        # setup-java call with one server-id is the supported happy path - unlike cloud-driver's
+        # maven-publish.yml, this repo needs no second registry entry, because every dependency
+        # here resolves from Maven Central (this repo IS the GitHub Packages registry others
+        # depend on, it doesn't consume one).
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      - name: Build with Maven
+        run: mvn -B package --file pom.xml
+
+      - name: Publish to GitHub Packages Apache Maven
+        # Deploys both modules (database-driver-api, database-driver-plugin), since the root
+        # pom.xml's <distributionManagement> is inherited by them. The automatic GITHUB_TOKEN is
+        # enough: it can always write packages belonging to this repository.
+        run: mvn -B deploy --file pom.xml -DskipTests
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ github.token }}
