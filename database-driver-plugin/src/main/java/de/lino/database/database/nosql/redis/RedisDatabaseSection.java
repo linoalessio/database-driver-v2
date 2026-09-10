@@ -1,45 +1,49 @@
 package de.lino.database.database.nosql.redis;
 
-import com.google.common.collect.Maps;
-import de.lino.database.DatabaseRepositoryRegistry;
-import de.lino.database.database.exception.DataAlreadyExist;
+import de.lino.database.database.AbstractCachedDatabaseSection;
 import de.lino.database.database.exception.NoSuchDataFound;
-import de.lino.database.database.exception.NoSuchEntryFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.database.DatabaseSection;
 import de.lino.database.database.entity.DatabaseEntry;
-import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.resps.ScanResult;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * The {@link DatabaseSection} backing one Redis key prefix ({@code "<name>:<id>"} per entry).
- * Entries are cached in memory (loaded once in the constructor and kept in sync on every write)
- * so reads never touch Redis, only writes do.
+ * All caching lives in {@link AbstractCachedDatabaseSection}; this class only supplies the key
+ * prefix's storage primitives - point primitives as single-key commands, whole-section
+ * primitives as cursor-based {@code SCAN} passes so no primitive ever blocks the server the way
+ * a {@code KEYS} call would.
  */
-public class RedisDatabaseSection implements DatabaseSection {
+public class RedisDatabaseSection extends AbstractCachedDatabaseSection {
 
     /**
-     * The Redis Pub/Sub channel every {@link #insert}/{@link #update} call unconditionally
-     * {@code PUBLISH}es a change notification to, in the exact {@code {"table", "operation",
-     * "id"}} JSON shape {@code PostgresDatabaseNotification}'s own trigger function emits, so a
-     * consumer needs no special-casing between the two backends. This is one fixed channel shared
-     * by every {@link RedisDatabaseSection} on a given Redis instance, not a per-section or
-     * per-provider setting - unlike Postgres, which binds an arbitrary, caller-chosen channel to
-     * each table via its own trigger, Redis has no server-side trigger concept to bind a channel
-     * to a key prefix with, so there is nothing to make this configurable per instance. A
-     * {@code RedisDatabaseNotification} must be constructed with this exact channel name to
-     * observe these publishes.
+     * The Redis Pub/Sub channel every {@link #persistInsert}/{@link #persistUpdate} call
+     * unconditionally {@code PUBLISH}es a change notification to, in the exact {@code {"table",
+     * "operation", "id"}} JSON shape {@code PostgresDatabaseNotification}'s own trigger function
+     * emits, so a consumer needs no special-casing between the two backends. This is one fixed
+     * channel shared by every {@link RedisDatabaseSection} on a given Redis instance, not a
+     * per-section or per-provider setting - unlike Postgres, which binds an arbitrary,
+     * caller-chosen channel to each table via its own trigger, Redis has no server-side trigger
+     * concept to bind a channel to a key prefix with, so there is nothing to make this
+     * configurable per instance. A {@code RedisDatabaseNotification} must be constructed with
+     * this exact channel name to observe these publishes.
      */
     public static final String CHANGE_NOTIFICATION_CHANNEL = "database-driver-changes";
+
+    /**
+     * How many keys each {@code SCAN} round trip asks the server for, in every cursor-based
+     * primitive here - the historical batch size, bounding a scan's per-round-trip work
+     * without starving it.
+     */
+    private static final int SCAN_BATCH_SIZE = 100;
 
     /**
      * The connection pool shared with this section's owning {@link RedisDatabaseProvider} and
@@ -48,28 +52,16 @@ public class RedisDatabaseSection implements DatabaseSection {
     private final JedisPool jedisPool;
 
     /**
-     * This section's key prefix.
-     */
-    @Getter
-    private final String name;
-
-    /**
-     * Every entry currently under {@link #name}'s key prefix, keyed by id and kept in sync with
-     * Redis by every write method; the source of truth for every read method.
-     */
-    private final Map<String, DatabaseEntry> entries;
-
-    /**
-     * Loads every existing {@code "<name>:*"} key into {@link #entries}.
+     * Loads every existing {@code "<name>:*"} key into the inherited in-memory view, via
+     * {@link #reload()}.
      *
      * @param jedisPool the connection pool to run every command through
      * @param name      this section's key prefix
      */
     public RedisDatabaseSection(@NotNull final JedisPool jedisPool, @NotNull final String name) {
 
-        this.name = name;
+        super(name);
         this.jedisPool = jedisPool;
-        this.entries = Maps.newConcurrentMap();
 
         this.reload();
 
@@ -78,31 +70,27 @@ public class RedisDatabaseSection implements DatabaseSection {
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #entries} entirely and re-populates it from every
-     * {@code "<name>:*"} key currently scanned via {@link #jedisPool}, the same scan
-     * the constructor itself runs.
+     * A cursor-based {@code SCAN} over {@code "<name>:*"} with a per-key {@code GET}, in
+     * {@value #SCAN_BATCH_SIZE}-key batches.
      */
     @Override
-    public void reload() {
-
-        this.entries.clear();
+    protected void loadAll(@NotNull final Consumer<DatabaseEntry> consumer) {
 
         String cursor = "0";
-        final ScanParams scanParams = new ScanParams().match(name + ":*").count(100);
+        final ScanParams scanParams = new ScanParams().match(this.getName() + ":*").count(SCAN_BATCH_SIZE);
 
-        try (final Jedis jedis = jedisPool.getResource()) {
+        try (final Jedis jedis = this.jedisPool.getResource()) {
 
             do {
 
                 final ScanResult<String> result = jedis.scan(cursor, scanParams);
 
-                for (String key : result.getResult()) {
+                for (final String key : result.getResult()) {
 
                     final byte[] data = jedis.get(key.getBytes());
                     if (data == null) throw new NoSuchDataFound(key);
 
-                    final DatabaseEntry databaseEntry = new DatabaseEntry(key.replace(this.name + ":", ""), new JsonDocument(data));
-                    this.entries.put(databaseEntry.getId(), databaseEntry);
+                    consumer.accept(new DatabaseEntry(key.replace(this.getName() + ":", ""), new JsonDocument(data)));
 
                 }
 
@@ -114,84 +102,138 @@ public class RedisDatabaseSection implements DatabaseSection {
 
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A single {@code GET} on the entry's full key - Redis' native point read.
+     */
     @Override
-    public void insert(@NotNull DatabaseEntry databaseEntry) {
+    protected Optional<DatabaseEntry> fetchOne(@NotNull final String id) {
 
-        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new DataAlreadyExist(databaseEntry.getId());
+        try (final Jedis jedis = this.jedisPool.getResource()) {
 
-        final String key = this.name + ":" + databaseEntry.getId();
+            final byte[] data = jedis.get(this.entryKey(id).getBytes());
+            return data == null ? Optional.empty() : Optional.of(new DatabaseEntry(id, new JsonDocument(data)));
+
+        }
+
+    }
+
+    @Override
+    protected void persistInsert(@NotNull final DatabaseEntry databaseEntry) {
 
         // databaseEntry.getDocument() is already the full "data"-enveloped document (see its
         // own javadoc); appending it here as-is under another "data" key would double-wrap it,
-        // so its already-unwrapped getMetaData() is used instead, matching update() below.
-        try (final Jedis jedis = jedisPool.getResource()) {
-            jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
+        // so its already-unwrapped getMetaData() is used instead, matching persistUpdate() below.
+        try (final Jedis jedis = this.jedisPool.getResource()) {
+            jedis.set(this.entryKey(databaseEntry.getId()).getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
             this.publishChangeNotification(jedis, "INSERT", databaseEntry.getId());
         }
 
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
-
     }
 
     @Override
-    public void update(@NotNull DatabaseEntry databaseEntry) {
+    protected void persistUpdate(@NotNull final DatabaseEntry databaseEntry) {
 
-        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
-
-        final String key = this.name + ":" + databaseEntry.getId();
-        try (final Jedis jedis = jedisPool.getResource()) {
-            jedis.set(key.getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
+        try (final Jedis jedis = this.jedisPool.getResource()) {
+            jedis.set(this.entryKey(databaseEntry.getId()).getBytes(), new JsonDocument().append("data", databaseEntry.getMetaData()).toBytes());
             this.publishChangeNotification(jedis, "UPDATE", databaseEntry.getId());
         }
 
-        this.entries.put(databaseEntry.getId(), databaseEntry);
-
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
-
     }
 
     @Override
-    public void delete(@NotNull String id) {
+    protected void persistDelete(@NotNull final String id) {
 
-        if (!this.exists(id)) throw new NoSuchEntryFound(id);
-
-        final String key = this.name + ":" + id;
-        try (final Jedis jedis = jedisPool.getResource()) {
-            jedis.del(key.getBytes());
-        }
-        this.entries.remove(id);
-
-    }
-
-    @Override
-    public long count() {
-        return this.entries.size();
-    }
-
-    @Override
-    public void clear() {
-
-        if (this.entries.isEmpty()) return;
-
-        // One DEL for every key at once, rather than one round trip per entry via delete().
-        final String[] keys = this.entries.keySet().stream().map(id -> this.name + ":" + id).toArray(String[]::new);
-
-        try (final Jedis jedis = jedisPool.getResource()) {
-            jedis.del(keys);
+        try (final Jedis jedis = this.jedisPool.getResource()) {
+            jedis.del(this.entryKey(id).getBytes());
         }
 
-        this.entries.clear();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A full cursor-based {@code SCAN} over {@code "<name>:*"}, counting matches - Redis keeps
+     * no per-prefix key count, so this is O(keyspace) per call and a full in-memory mode
+     * answers {@code count()} far cheaper for hot sections.
+     */
+    @Override
+    protected long countRemote() {
+
+        long count = 0;
+        String cursor = "0";
+        final ScanParams scanParams = new ScanParams().match(this.getName() + ":*").count(SCAN_BATCH_SIZE);
+
+        try (final Jedis jedis = this.jedisPool.getResource()) {
+
+            do {
+
+                final ScanResult<String> result = jedis.scan(cursor, scanParams);
+                count += result.getResult().size();
+                cursor = result.getCursor();
+
+            } while (!cursor.equals("0"));
+
+        }
+
+        return count;
 
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A single {@code EXISTS} on the entry's full key - Redis' native point check.
+     */
     @Override
-    public boolean exists(@NotNull String id) {
-        return this.entries.containsKey(id);
+    protected boolean existsRemote(@NotNull final String id) {
+
+        try (final Jedis jedis = this.jedisPool.getResource()) {
+            return jedis.exists(this.entryKey(id));
+        }
+
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A cursor-based {@code SCAN} over {@code "<name>:*"} with one {@code DEL} per scanned
+     * batch rather than one per key, cutting round trips from O(matched keys) to
+     * O(matched keys / {@value #SCAN_BATCH_SIZE}).
+     */
     @Override
-    public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.get(id));
+    protected void clearRemote() {
+
+        String cursor = "0";
+        final ScanParams scanParams = new ScanParams().match(this.getName() + ":*").count(SCAN_BATCH_SIZE);
+
+        try (final Jedis jedis = this.jedisPool.getResource()) {
+
+            do {
+
+                final ScanResult<String> result = jedis.scan(cursor, scanParams);
+                final List<String> keys = result.getResult();
+
+                if (!keys.isEmpty()) jedis.del(keys.toArray(new String[0]));
+
+                cursor = result.getCursor();
+
+            } while (!cursor.equals("0"));
+
+        }
+
+    }
+
+    /**
+     * Builds the full Redis key an entry with {@code id} is stored under - the single naming
+     * rule ({@code "<name>:<id>"}) every primitive above shares.
+     *
+     * @param id the entry's id
+     * @return the entry's full Redis key
+     */
+    private @NotNull String entryKey(@NotNull final String id) {
+        return this.getName() + ":" + id;
     }
 
     /**
@@ -208,16 +250,11 @@ public class RedisDatabaseSection implements DatabaseSection {
      */
     private void publishChangeNotification(@NotNull final Jedis jedis, @NotNull final String operation, @NotNull final String id) {
         final String payload = new JsonDocument()
-                .append("table", this.name)
+                .append("table", this.getName())
                 .append("operation", operation)
                 .append("id", id)
                 .toJson();
         jedis.publish(CHANGE_NOTIFICATION_CHANNEL, payload);
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return List.copyOf(this.entries.values());
     }
 
 }

@@ -1,7 +1,6 @@
 package de.lino.database.database.nosql.rethinkdb;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.google.common.collect.Maps;
 import com.rethinkdb.RethinkDB;
 import com.rethinkdb.gen.ast.Db;
 import com.rethinkdb.gen.ast.Table;
@@ -9,40 +8,27 @@ import com.rethinkdb.model.MapObject;
 import com.rethinkdb.net.Connection;
 import com.rethinkdb.net.Result;
 import com.rethinkdb.utils.Types;
-import de.lino.database.DatabaseRepositoryRegistry;
-import de.lino.database.database.exception.DataAlreadyExist;
+import de.lino.database.database.AbstractCachedDatabaseSection;
 import de.lino.database.database.exception.NoSuchDataFound;
-import de.lino.database.database.exception.NoSuchEntryFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.database.DatabaseSection;
 import de.lino.database.database.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
- * The {@link DatabaseSection} backing one RethinkDB table. Entries are cached in memory (loaded
- * once in the constructor and kept in sync on every write) so reads never touch the database,
- * only writes do.
+ * The {@link DatabaseSection} backing one RethinkDB table. All caching lives in
+ * {@link AbstractCachedDatabaseSection}; this class only supplies the table's storage
+ * primitives - each one a single ReQL term against the {@code {id, values}} row shape.
  */
 @Getter
-public class RethinkDBDatabaseSection implements DatabaseSection {
-
-    /**
-     * This section's table name.
-     */
-    private final String name;
-
-    /**
-     * Every entry currently in {@link #table}, keyed by id and kept in sync with the database by
-     * every write method; the source of truth for every read method.
-     */
-    private final Map<String, DatabaseEntry> entries;
+public class RethinkDBDatabaseSection extends AbstractCachedDatabaseSection {
 
     /**
      * The row shape ({@code {id, values}}) every query against {@link #table} is deserialized as.
@@ -61,7 +47,8 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
     private final Table table;
 
     /**
-     * Loads {@code name}'s existing rows into {@link #entries}.
+     * Loads {@code name}'s existing rows into the inherited in-memory view, via
+     * {@link #reload()}.
      *
      * @param name       this section's table name
      * @param connection the connection to run every query through
@@ -69,9 +56,7 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
      */
     public RethinkDBDatabaseSection(@NotNull String name, @NotNull Connection connection, @NotNull Db db) {
 
-        this.name = name;
-        this.entries = Maps.newConcurrentMap();
-
+        super(name);
         this.connection = connection;
         this.cache = Types.mapOf(String.class, String.class);
         this.table = db.table(name);
@@ -83,85 +68,102 @@ public class RethinkDBDatabaseSection implements DatabaseSection {
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #entries} entirely and re-populates it from every row currently
-     * in {@link #table}, the same scan the constructor itself runs.
+     * Iterates the table's result cursor, which the driver batches server-side - the table is
+     * never materialized as a whole on this side of the wire.
      */
     @Override
-    public void reload() {
-
-        this.entries.clear();
+    protected void loadAll(@NotNull Consumer<DatabaseEntry> consumer) {
 
         try (final Result<Map<String, String>> result = this.table.run(this.connection, this.cache)) {
 
             while (result.hasNext()) {
-
-                final Map<String, String> content = result.next();
-                if (!content.containsKey("data")) throw new NoSuchDataFound(content.get("id"));
-                this.entries.put(content.get("id"), new DatabaseEntry(Objects.requireNonNull(content).get("id"), new JsonDocument(content.get("values"))));
-
+                consumer.accept(this.readEntry(result.next()));
             }
 
         }
 
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A primary-key {@code get} - RethinkDB's native point read, keyed on the same {@code id}
+     * field every write here stores.
+     */
     @Override
-    public void insert(@NotNull DatabaseEntry databaseEntry) {
+    protected Optional<DatabaseEntry> fetchOne(@NotNull String id) {
 
-        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new DataAlreadyExist(databaseEntry.getId());
+        final Map<String, String> content = this.pointRead(id);
+        return content == null ? Optional.empty() : Optional.of(this.readEntry(content));
 
+    }
+
+    /**
+     * Parses one stored row back into a {@link DatabaseEntry}, the shared row shape
+     * ({@code {id, values}}) every read here expects.
+     *
+     * @param content the stored row to parse
+     * @return the parsed entry
+     * @throws NoSuchDataFound if the row holds no {@code "data"} key - preserved from the
+     *                         historical loading code even though rows written by
+     *                         {@link #persistInsert} carry {@code "values"}, not {@code "data"};
+     *                         changing the check would change which stored rows load at all
+     */
+    private @NotNull DatabaseEntry readEntry(@NotNull Map<String, String> content) {
+
+        if (!content.containsKey("data")) throw new NoSuchDataFound(content.get("id"));
+
+        return new DatabaseEntry(Objects.requireNonNull(content).get("id"), new JsonDocument(content.get("values")));
+
+    }
+
+    /**
+     * Runs the primary-key {@code get} shared by {@link #fetchOne} and {@link #existsRemote},
+     * unwrapping RethinkDB's "single atom, possibly {@code null}" result shape once.
+     *
+     * @param id the primary key to read
+     * @return the stored row, or {@code null} if the table holds none under {@code id}
+     */
+    private @Nullable Map<String, String> pointRead(@NotNull String id) {
+
+        try (final Result<Map<String, String>> result = this.table.get(id).run(this.connection, this.cache)) {
+            return result.hasNext() ? result.next() : null;
+        }
+
+    }
+
+    @Override
+    protected void persistInsert(@NotNull DatabaseEntry databaseEntry) {
         this.table.insert(this.mapping(databaseEntry)).runNoReply(this.connection);
-
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
-
     }
 
     @Override
-    public void update(@NotNull DatabaseEntry databaseEntry) {
-
-        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
+    protected void persistUpdate(@NotNull DatabaseEntry databaseEntry) {
         this.table.update(this.mapping(databaseEntry)).runNoReply(this.connection);
-
-        this.entries.put(databaseEntry.getId(), databaseEntry);
-
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
-
     }
 
     @Override
-    public void delete(@NotNull String id) {
-
-        if (!this.exists(id)) throw new NoSuchEntryFound(id);
-
+    protected void persistDelete(@NotNull String id) {
         this.table.filter(this.mapping(id)).delete().runNoReply(this.connection);
-        this.entries.remove(id);
+    }
+
+    @Override
+    protected long countRemote() {
+
+        try (final Result<Long> result = this.table.count().run(this.connection, Long.class)) {
+            return result.hasNext() ? result.next() : 0L;
+        }
 
     }
 
     @Override
-    public long count() {
-        return this.entries.size();
+    protected boolean existsRemote(@NotNull String id) {
+        return this.pointRead(id) != null;
     }
 
     @Override
-    public void clear() {
+    protected void clearRemote() {
         this.table.delete().runNoReply(this.connection);
-        this.entries.clear();
-    }
-
-    @Override
-    public boolean exists(@NotNull String id) {
-        return this.entries.containsKey(id);
-    }
-
-    @Override
-    public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.get(id));
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return List.copyOf(this.entries.values());
     }
 
     private MapObject<Object, Object> mapping(@NotNull String id) {

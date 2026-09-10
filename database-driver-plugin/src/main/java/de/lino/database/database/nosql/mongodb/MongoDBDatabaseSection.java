@@ -1,43 +1,28 @@
 package de.lino.database.database.nosql.mongodb;
 
-import com.google.common.collect.Maps;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
-import de.lino.database.DatabaseRepositoryRegistry;
-import de.lino.database.database.exception.DataAlreadyExist;
+import com.mongodb.client.model.Projections;
+import de.lino.database.database.AbstractCachedDatabaseSection;
 import de.lino.database.database.exception.NoSuchDataFound;
-import de.lino.database.database.exception.NoSuchEntryFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.database.DatabaseSection;
 import de.lino.database.database.entity.DatabaseEntry;
 import lombok.Getter;
 import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
 
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
- * The {@link DatabaseSection} backing one MongoDB collection. Entries are cached in memory
- * (loaded once in the constructor and kept in sync on every write) so reads never touch the
- * database, only writes do.
+ * The {@link DatabaseSection} backing one MongoDB collection. All caching lives in
+ * {@link AbstractCachedDatabaseSection}; this class only supplies the collection's storage
+ * primitives - each one a single driver call against the {@code {id, data}} document shape.
  */
 @Getter
-public class MongoDBDatabaseSection implements DatabaseSection {
-
-    /**
-     * This section's collection name.
-     */
-    private final String name;
-
-    /**
-     * Every entry currently in {@link #collection}, keyed by id and kept in sync with the
-     * database by every write method; the source of truth for every read method.
-     */
-    private final Map<String, DatabaseEntry> entries;
+public class MongoDBDatabaseSection extends AbstractCachedDatabaseSection {
 
     /**
      * The collection this section wraps.
@@ -45,15 +30,15 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     private final MongoCollection<Document> collection;
 
     /**
-     * Loads {@code name}'s existing documents into {@link #entries}.
+     * Loads {@code name}'s existing documents into the inherited in-memory view, via
+     * {@link #reload()}.
      *
      * @param mongoDatabase the database {@code name}'s collection belongs to
      * @param name          this section's collection name
      */
     public MongoDBDatabaseSection(@NotNull MongoDatabase mongoDatabase, @NotNull String name) {
 
-        this.name = name;
-        this.entries = Maps.newConcurrentMap();
+        super(name);
         this.collection = mongoDatabase.getCollection(name);
 
         this.reload();
@@ -63,88 +48,93 @@ public class MongoDBDatabaseSection implements DatabaseSection {
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #entries} entirely and re-populates it from every document
-     * currently in {@link #collection}, the same scan the constructor itself runs.
+     * Iterates the collection's {@code find()} cursor, which the driver batches server-side -
+     * the collection is never materialized as a whole on this side of the wire.
      */
     @Override
-    public void reload() {
-
-        this.entries.clear();
+    protected void loadAll(@NotNull Consumer<DatabaseEntry> consumer) {
 
         for (Document document : this.collection.find()) {
-
-            if (!document.containsKey("data")) throw new NoSuchDataFound(document.getString("id"));
-
-            final JsonDocument jsonDocument = new JsonDocument(document.toJson());
-            this.entries.put(document.getString("id"), new DatabaseEntry(document.getString("id"), new JsonDocument("data", jsonDocument.getMetaData("data"))));
-
+            consumer.accept(this.readEntry(document));
         }
 
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A single filtered {@code find} on the {@code id} field - the same field every write here
+     * keys on.
+     */
     @Override
-    public void insert(@NotNull DatabaseEntry databaseEntry) {
+    protected Optional<DatabaseEntry> fetchOne(@NotNull String id) {
 
-        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new DataAlreadyExist(databaseEntry.getId());
+        final Document document = this.collection.find(Filters.eq("id", id)).first();
+        return document == null ? Optional.empty() : Optional.of(this.readEntry(document));
 
-        // databaseEntry.getDocument() is already the full "data"-enveloped document (see its
-        // own javadoc); appending it here as-is under another "data" key would double-wrap it,
-        // so its already-unwrapped getMetaData() is used instead, matching update() below.
-        final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData()).toJson();
-        this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
+    }
 
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
+    /**
+     * Parses one stored document back into a {@link DatabaseEntry}, the shared row shape
+     * ({@code {id, data}}) every read here expects.
+     *
+     * @param document the stored document to parse
+     * @return the parsed entry
+     * @throws NoSuchDataFound if the document holds no {@code "data"} envelope, indicating a
+     *                         corrupted or foreign document
+     */
+    private @NotNull DatabaseEntry readEntry(@NotNull Document document) {
+
+        if (!document.containsKey("data")) throw new NoSuchDataFound(document.getString("id"));
+
+        final JsonDocument jsonDocument = new JsonDocument(document.toJson());
+        return new DatabaseEntry(document.getString("id"), new JsonDocument("data", jsonDocument.getMetaData("data")));
 
     }
 
     @Override
-    public void update(@NotNull DatabaseEntry databaseEntry) {
+    protected void persistInsert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
+        // databaseEntry.getDocument() is already the full "data"-enveloped document (see its
+        // own javadoc); appending it here as-is under another "data" key would double-wrap it,
+        // so its already-unwrapped getMetaData() is used instead, matching persistUpdate() below.
+        final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData()).toJson();
+        this.collection.insertOne(new JsonDocument().getGson().fromJson(json, Document.class));
+
+    }
+
+    @Override
+    protected void persistUpdate(@NotNull DatabaseEntry databaseEntry) {
 
         final String json = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData()).toJson();
         this.collection.updateOne(Filters.eq("id", databaseEntry.getId()), new Document("$set", new JsonDocument().getGson().fromJson(json, Document.class)));
 
-        this.entries.put(databaseEntry.getId(), databaseEntry);
-
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
-
     }
 
     @Override
-    public void delete(@NotNull String id) {
-
-        if (!this.exists(id)) throw new NoSuchEntryFound(id);
-
+    protected void persistDelete(@NotNull String id) {
         this.collection.deleteOne(Filters.eq("id", id));
-        this.entries.remove(id);
-
     }
 
     @Override
-    public long count() {
-        return this.entries.size();
+    protected long countRemote() {
+        return this.collection.countDocuments();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A filtered {@code find} projected down to {@code _id} only, so the presence check never
+     * transfers the (potentially large) {@code data} payload just to discard it.
+     */
+    @Override
+    protected boolean existsRemote(@NotNull String id) {
+        return this.collection.find(Filters.eq("id", id)).projection(Projections.include("_id")).first() != null;
     }
 
     @Override
-    public void clear() {
+    protected void clearRemote() {
         this.collection.deleteMany(new Document());
-        this.entries.clear();
-    }
-
-    @Override
-    public boolean exists(@NotNull String id) {
-        return this.entries.containsKey(id);
-    }
-
-    @Override
-    public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.get(id));
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return List.copyOf(this.entries.values());
     }
 
 }

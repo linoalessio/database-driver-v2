@@ -26,11 +26,38 @@ public interface DatabaseProvider {
     /**
      * Create a new database section if not exists.
      * Otherwise, the existing section will be returned.
+     * <p>
+     * <b>This overload always means {@link CacheMode#FULL}</b> (unless a different
+     * {@link SectionConfig} was already registered for {@code name} via
+     * {@link #createSection(String, SectionConfig)}): the section holds every entry in memory,
+     * warm by the time this returns - the behavior every consumer written before per-section
+     * cache configuration existed was built against.
      *
      * @param name section name
      * @return the newly created, or already existing, {@link DatabaseSection}
      */
     DatabaseSection createSection(@NotNull String name);
+
+    /**
+     * Like {@link #createSection(String)}, with an explicit cache configuration deciding how
+     * the section holds entries in memory (see {@link CacheMode} for the trade-offs). Repeating
+     * the call with the configuration the section already runs under returns the existing
+     * instance; a <em>different</em> configuration replaces the instance - the newest
+     * declaration wins - dropping whatever cache state the old one held.
+     * <p>
+     * This is a {@code default} method only so third-party {@link DatabaseProvider}
+     * implementations written before it existed keep compiling: the fallback ignores
+     * {@code config} entirely and behaves exactly like {@link #createSection(String)}. Every
+     * provider shipped by this library's plugin module overrides it with a real implementation;
+     * do not rely on the fallback for anything beyond source compatibility.
+     *
+     * @param name   section name
+     * @param config how the section should hold entries in memory
+     * @return the newly created, or already existing, {@link DatabaseSection}
+     */
+    default DatabaseSection createSection(@NotNull String name, @NotNull SectionConfig config) {
+        return createSection(name);
+    }
 
     /**
      * Delete if the section does exist.
@@ -105,6 +132,18 @@ public interface DatabaseProvider {
      */
     default CompletableFuture<DatabaseSection> createSectionAsync(@NotNull String name) {
         return CompletableFuture.supplyAsync(() -> createSection(name));
+    }
+
+    /**
+     * Execute the {@link #createSection(String, SectionConfig)} process async.
+     *
+     * @param name   section name
+     * @param config how the section should hold entries in memory
+     * @return a {@link CompletableFuture} resolving to the newly created, or already existing,
+     * {@link DatabaseSection}
+     */
+    default CompletableFuture<DatabaseSection> createSectionAsync(@NotNull String name, @NotNull SectionConfig config) {
+        return CompletableFuture.supplyAsync(() -> createSection(name, config));
     }
 
     /**

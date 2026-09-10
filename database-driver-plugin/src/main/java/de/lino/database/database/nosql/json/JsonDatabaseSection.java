@@ -1,9 +1,7 @@
 package de.lino.database.database.nosql.json;
 
-import com.google.common.collect.Maps;
-import de.lino.database.DatabaseRepositoryRegistry;
+import de.lino.database.database.AbstractCachedDatabaseSection;
 import de.lino.database.database.auth.Credentials;
-import de.lino.database.database.exception.DataAlreadyExist;
 import de.lino.database.database.exception.NoSuchDataFound;
 import de.lino.database.database.exception.NoSuchEntryFound;
 import de.lino.database.json.JsonDocument;
@@ -12,24 +10,23 @@ import de.lino.database.database.DatabaseSection;
 import de.lino.database.database.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * The {@link DatabaseSection} backing one directory of JSON files, one file per entry, named
- * {@code <id>.json}. Entries are cached in memory (loaded once in the constructor and kept in
- * sync on every write) so reads never touch the filesystem, only writes do.
+ * {@code <id>.json}. All caching lives in {@link AbstractCachedDatabaseSection}; this class only
+ * supplies the directory's storage primitives - each one a plain file operation.
  */
 @Getter
-public class JsonDatabaseSection implements DatabaseSection {
-
-    /**
-     * This section's directory name, relative to {@link Credentials}'s {@code getFileRepository()}.
-     */
-    private final String name;
+public class JsonDatabaseSection extends AbstractCachedDatabaseSection {
 
     /**
      * The login credentials this section was constructed with, providing the file repository
@@ -43,14 +40,8 @@ public class JsonDatabaseSection implements DatabaseSection {
     private final Path parent;
 
     /**
-     * Every entry currently in {@link #parent}, keyed by id and kept in sync with the filesystem
-     * by every write method; the source of truth for every read method.
-     */
-    private final Map<String, DatabaseEntry> entries;
-
-    /**
-     * Creates (if not already present) {@link #parent} and loads its existing entries into
-     * {@link #entries}, via {@link #reload()}.
+     * Creates (if not already present) {@link #parent} and loads its existing entries into the
+     * inherited in-memory view, via {@link #reload()}.
      *
      * @param name        this section's directory name
      * @param credentials the login credentials, providing the file repository root this
@@ -58,9 +49,8 @@ public class JsonDatabaseSection implements DatabaseSection {
      */
     public JsonDatabaseSection(@NotNull String name, @NotNull Credentials credentials) {
 
-        this.name = name;
+        super(name);
         this.credentials = credentials;
-        this.entries = Maps.newConcurrentMap();
         this.parent = Paths.get(credentials.getFileRepository(), name);
 
         this.reload();
@@ -70,11 +60,9 @@ public class JsonDatabaseSection implements DatabaseSection {
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #entries} entirely and re-populates it from every {@code *.json}
-     * file currently in {@link #parent}, the same scan the constructor itself runs -
-     * so a file added, changed or removed directly on disk since this section was
-     * constructed (e.g. a backup restored while the application was already running)
-     * is picked up here even though ordinary reads never touch the filesystem.
+     * Iterates every {@code *.json} file currently in {@link #parent}, (re-)creating the
+     * directory first so a freshly created section starts from an existing, empty directory
+     * rather than failing to list a missing one.
      * <p>
      * Only files ending in {@code .json} are considered; a stray non-entry file sitting
      * directly in {@link #parent} (most commonly a filesystem-managed one such as macOS'
@@ -82,102 +70,133 @@ public class JsonDatabaseSection implements DatabaseSection {
      * skipped rather than parsed as an entry, which would otherwise fail outright.
      */
     @Override
-    public void reload() {
+    protected void loadAll(@NotNull Consumer<DatabaseEntry> consumer) {
 
         FileProvider.getInstance().createDirectory(this.parent);
-        this.entries.clear();
 
-        Arrays.stream(Objects.requireNonNull(this.parent.toFile().listFiles((dir, name) -> name.endsWith(".json")))).forEach(path -> {
+        Arrays.stream(Objects.requireNonNull(this.parent.toFile().listFiles((dir, fileName) -> fileName.endsWith(".json")))).forEach(path -> {
 
             final String id = path.getName().replace(".json", "");
-            final JsonDocument document = JsonDocument.load(path.toPath());
-
-            if (!document.contains("data")) throw new NoSuchDataFound(id);
-
-            this.entries.put(id, new DatabaseEntry(id, document));
+            consumer.accept(this.readEntry(id, path.toPath()));
 
         });
 
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A single file lookup: the entry exists exactly if its {@code <id>.json} file does.
+     */
     @Override
-    public void insert(@NotNull DatabaseEntry databaseEntry) {
+    protected Optional<DatabaseEntry> fetchOne(@NotNull String id) {
 
-        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new DataAlreadyExist(databaseEntry.getId());
+        final Path path = this.entryFile(id);
+        if (Files.notExists(path)) return Optional.empty();
 
-        // databaseEntry.getDocument() is already the full "data"-enveloped document (see its
-        // own javadoc); appending it here as-is under another "data" key would double-wrap it,
-        // so its already-unwrapped getMetaData() is used instead - the same shape update() below
-        // writes, so a freshly inserted entry round-trips identically to a later-updated one.
-        final JsonDocument document = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData());
-        document.write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
+        return Optional.of(this.readEntry(id, path));
 
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
+    }
+
+    /**
+     * Parses one entry's JSON file, the shared row shape ({@code {"id": ..., "data": ...}})
+     * every read here expects.
+     *
+     * @param id   the entry's id, already derived from the file name by the caller
+     * @param path the entry's JSON file
+     * @return the parsed entry
+     * @throws NoSuchDataFound if the file exists but holds no {@code "data"} envelope,
+     *                         indicating a corrupted or foreign file
+     */
+    private @NotNull DatabaseEntry readEntry(@NotNull String id, @NotNull Path path) {
+
+        final JsonDocument document = JsonDocument.load(path);
+        if (!document.contains("data")) throw new NoSuchDataFound(id);
+
+        return new DatabaseEntry(id, document);
 
     }
 
     @Override
-    public void update(@NotNull DatabaseEntry databaseEntry) {
+    protected void persistInsert(@NotNull DatabaseEntry databaseEntry) {
 
-        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
+        // databaseEntry.getDocument() is already the full "data"-enveloped document (see its
+        // own javadoc); appending it here as-is under another "data" key would double-wrap it,
+        // so its already-unwrapped getMetaData() is used instead - the same shape persistUpdate()
+        // below writes, so a freshly inserted entry round-trips identically to a later-updated one.
+        final JsonDocument document = new JsonDocument().append("id", databaseEntry.getId()).append("data", databaseEntry.getMetaData());
+        document.write(this.entryFile(databaseEntry.getId()));
+
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Two historical write shapes, preserved exactly: an entry whose document already carries
+     * its {@code "id"} (the shape {@link #loadAll} produces when reading a file back) simply
+     * replaces the stored file outright, while an entry without one (the shape a caller builds
+     * fresh) is <em>merged</em> - its metadata keys are added on top of the previously stored
+     * entry's metadata, so keys absent from the update survive. The previous entry is taken
+     * from the engine's in-memory view when available (see
+     * {@link AbstractCachedDatabaseSection#cachedEntry}) because the in-memory copy is what
+     * this merge historically read - it is not guaranteed byte-identical to the file - and
+     * only read from disk when nothing is cached.
+     */
+    @Override
+    protected void persistUpdate(@NotNull DatabaseEntry databaseEntry) {
 
         if (databaseEntry.getDocument().contains("id")) {
 
-            this.delete(databaseEntry.getId());
-            this.insert(databaseEntry);
+            this.persistDelete(databaseEntry.getId());
+            this.persistInsert(databaseEntry);
 
             return;
         }
 
-        final JsonDocument data = Objects.requireNonNull(this.findEntryById(databaseEntry.getId()).orElse(null)).getMetaData();
+        final DatabaseEntry existing = this.cachedEntry(databaseEntry.getId())
+                .or(() -> this.fetchOne(databaseEntry.getId()))
+                .orElseThrow(() -> new NoSuchEntryFound(databaseEntry.getId()));
+
+        final JsonDocument data = existing.getMetaData();
 
         databaseEntry.getMetaData().asMap().forEach((key, value) -> data.getJsonObject().add(key, value));
-        Objects.requireNonNull(this.findEntryById(databaseEntry.getId()).orElse(null))
-                .getDocument()
+        existing.getDocument()
                 .append("id", databaseEntry.getId())
                 .append("data", data)
-                .write(Paths.get(this.parent.toString(), databaseEntry.getId()) + ".json");
-
-        this.entries.put(databaseEntry.getId(), databaseEntry);
-
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
+                .write(this.entryFile(databaseEntry.getId()));
 
     }
 
     @Override
-    public void delete(@NotNull String id) {
-
-        if (!this.exists(id)) throw new NoSuchEntryFound(id);
-
-        FileProvider.getInstance().deleteFile(Paths.get(this.parent.toString(), id + ".json"));
-        this.entries.remove(id);
-
+    protected void persistDelete(@NotNull String id) {
+        FileProvider.getInstance().deleteFile(this.entryFile(id));
     }
 
     @Override
-    public long count() {
-        return this.entries.size();
+    protected long countRemote() {
+        final File[] files = this.parent.toFile().listFiles((dir, fileName) -> fileName.endsWith(".json"));
+        return files == null ? 0L : files.length;
     }
 
     @Override
-    public void clear() {
+    protected boolean existsRemote(@NotNull String id) {
+        return Files.exists(this.entryFile(id));
+    }
+
+    @Override
+    protected void clearRemote() {
         FileProvider.getInstance().deleteAllFilesInDirectory(this.parent);
-        this.entries.clear();
     }
 
-    @Override
-    public boolean exists(@NotNull String id) {
-        return this.entries.containsKey(id);
-    }
-
-    @Override
-    public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.get(id));
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return List.copyOf(this.entries.values());
+    /**
+     * Resolves the file an entry with {@code id} is stored in - the single naming rule
+     * ({@code <parent>/<id>.json}) every primitive above shares.
+     *
+     * @param id the entry's id
+     * @return the entry's file path
+     */
+    private @NotNull Path entryFile(@NotNull String id) {
+        return Paths.get(this.parent.toString(), id + ".json");
     }
 
 }

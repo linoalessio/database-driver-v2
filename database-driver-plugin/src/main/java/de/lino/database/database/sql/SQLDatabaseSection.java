@@ -1,10 +1,7 @@
 package de.lino.database.database.sql;
 
-import com.google.common.collect.Maps;
-import de.lino.database.DatabaseRepositoryRegistry;
-import de.lino.database.database.exception.DataAlreadyExist;
+import de.lino.database.database.AbstractCachedDatabaseSection;
 import de.lino.database.database.exception.NoSuchDataFound;
-import de.lino.database.database.exception.NoSuchEntryFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.database.DatabaseSection;
 import de.lino.database.database.DatabaseType;
@@ -12,28 +9,23 @@ import de.lino.database.database.entity.DatabaseEntry;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
- * The {@link DatabaseSection} backing one SQL table: entries are cached in memory (loaded once
- * in the constructor and kept in sync on every write) so reads ({@link #exists}, {@link #count},
- * {@link #getEntries}, {@link #findEntryById}) never touch the database, only writes do.
+ * The {@link DatabaseSection} backing one SQL table, shared by every SQL vendor this driver
+ * supports. All caching lives in {@link AbstractCachedDatabaseSection}; this class only supplies
+ * the table's storage primitives - each one a single parameterized statement against the
+ * {@code (id, data)} schema the constructor creates.
  */
 @Getter
-public class SQLDatabaseSection implements DatabaseSection {
-
-    /**
-     * This section's table name.
-     */
-    private final String name;
+public class SQLDatabaseSection extends AbstractCachedDatabaseSection {
 
     /**
      * The connection pool shared with this section's owning {@link SQLDatabaseProvider} and
@@ -42,14 +34,8 @@ public class SQLDatabaseSection implements DatabaseSection {
     private final SQLExecution sqlExecution;
 
     /**
-     * Every entry currently in this table, keyed by id and kept in sync with the database by
-     * every write method; the source of truth for every read method.
-     */
-    private final Map<String, DatabaseEntry> entries;
-
-    /**
      * Creates (if not already present) this section's table and loads its existing rows into
-     * {@link #entries}.
+     * the inherited in-memory view, via {@link #reload()}.
      *
      * @param databaseType the SQL vendor {@code sqlExecution} is connected to, used to pick this
      *                     vendor's BLOB column type
@@ -59,9 +45,8 @@ public class SQLDatabaseSection implements DatabaseSection {
     @SneakyThrows
     public SQLDatabaseSection(@NotNull DatabaseType databaseType, @NotNull String name, @NotNull SQLExecution sqlExecution) {
 
-        this.name = name;
+        super(name);
         this.sqlExecution = sqlExecution;
-        this.entries = Maps.newConcurrentMap();
 
         String sqlStatement = "";
         switch (databaseType) {
@@ -79,45 +64,34 @@ public class SQLDatabaseSection implements DatabaseSection {
     }
 
     /**
-     * How many rows {@link #reload()} fetches from the server per round trip. Bounds reload's
-     * transient memory to roughly this many rows' raw bytes on top of {@link #entries} itself -
-     * without it, the JDBC driver buffers the complete table in memory before the first row is
-     * even parsed, which for a multi-gigabyte table is a boot-time OutOfMemoryError (and the
-     * half-read connection it leaves behind desyncs with a "Unexpected packet type" error on
-     * its next use).
+     * How many rows {@link #loadAll} fetches from the server per round trip. Bounds a full
+     * load's transient memory to roughly this many rows' raw bytes on top of whatever the
+     * engine builds from them - without it, the JDBC driver buffers the complete table in
+     * memory before the first row is even parsed, which for a multi-gigabyte table is a
+     * boot-time OutOfMemoryError (and the half-read connection it leaves behind desyncs with a
+     * "Unexpected packet type" error on its next use).
      */
     private static final int RELOAD_FETCH_SIZE = 256;
 
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #entries} entirely and re-populates it from every row currently
-     * in this section's table, the same query the constructor itself runs. Rows are streamed
-     * in {@link #RELOAD_FETCH_SIZE}-row batches, never buffered whole.
+     * Streams {@code SELECT * FROM <table>} in {@link #RELOAD_FETCH_SIZE}-row batches, never
+     * buffering the result set whole - see {@link SQLExecution#executeStreamingQuery} for why
+     * the plain query variant would OOM on a large table.
      */
     @Override
-    @SneakyThrows
-    public void reload() {
+    protected void loadAll(@NotNull Consumer<DatabaseEntry> consumer) {
 
-        this.entries.clear();
-
-        this.sqlExecution.executeStreamingQuery("SELECT * FROM " + this.name, RELOAD_FETCH_SIZE, resultSet -> {
+        this.sqlExecution.executeStreamingQuery("SELECT * FROM " + this.getName(), RELOAD_FETCH_SIZE, resultSet -> {
 
             try {
 
                 while (resultSet.next()) {
 
                     final String id = resultSet.getString("id");
-                    final byte[] data = resultSet.getBytes("data");
-
-                    if (data == null) throw new NoSuchDataFound(id);
-
-                    try (final InputStream inputStream = new ByteArrayInputStream(data)) {
-                        JsonDocument jsonDocument = new JsonDocument(inputStream);
-                        this.entries.put(id, new DatabaseEntry(id, jsonDocument));
-                    } catch (final IOException exception) {
-                        exception.printStackTrace();
-                    }
+                    final DatabaseEntry databaseEntry = this.readEntry(id, resultSet);
+                    if (databaseEntry != null) consumer.accept(databaseEntry);
 
                 }
 
@@ -130,63 +104,106 @@ public class SQLDatabaseSection implements DatabaseSection {
 
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A single indexed-lookup-shaped {@code SELECT ... WHERE id = ?}. A row whose {@code data}
+     * column is unexpectedly {@code NULL} surfaces as absent rather than throwing, because
+     * {@link SQLExecution#executeQuery}'s error handling maps any failure inside the row mapper
+     * to the default value.
+     */
     @Override
-    public void insert(@NotNull DatabaseEntry databaseEntry) {
+    protected Optional<DatabaseEntry> fetchOne(@NotNull String id) {
 
-        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new DataAlreadyExist(databaseEntry.getId());
+        return this.sqlExecution.<Optional<DatabaseEntry>>executeQuery("SELECT data FROM " + this.getName() + " WHERE id = ?", resultSet -> {
 
-        this.sqlExecution.executeUpdate("INSERT INTO " + this.name + " (id, data) VALUES (?, ?);", databaseEntry.getId(), databaseEntry.getDocument().toBytes());
+            try {
+                if (!resultSet.next()) return Optional.empty();
+                return Optional.ofNullable(this.readEntry(id, resultSet));
+            } catch (final SQLException exception) {
+                exception.printStackTrace();
+                return Optional.empty();
+            }
 
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
+        }, Optional.empty(), id);
+
+    }
+
+    /**
+     * Parses the current row of {@code resultSet} into a {@link DatabaseEntry}, the one row
+     * shape ({@code data} BLOB holding the serialized {@link JsonDocument}) every query here
+     * shares.
+     *
+     * @param id        the row's primary key, already read by the caller
+     * @param resultSet positioned on the row to parse
+     * @return the parsed entry, or {@code null} if the raw bytes could not be read back
+     * @throws SQLException     if reading the {@code data} column fails
+     * @throws NoSuchDataFound  if the row exists but its {@code data} column is {@code NULL}
+     */
+    private DatabaseEntry readEntry(String id, @NotNull ResultSet resultSet) throws SQLException {
+
+        final byte[] data = resultSet.getBytes("data");
+        if (data == null) throw new NoSuchDataFound(id);
+
+        try (final InputStream inputStream = new ByteArrayInputStream(data)) {
+            return new DatabaseEntry(id, new JsonDocument(inputStream));
+        } catch (final IOException exception) {
+            exception.printStackTrace();
+            return null;
+        }
 
     }
 
     @Override
-    public void update(@NotNull DatabaseEntry databaseEntry) {
+    protected void persistInsert(@NotNull DatabaseEntry databaseEntry) {
+        this.sqlExecution.executeUpdate("INSERT INTO " + this.getName() + " (id, data) VALUES (?, ?);", databaseEntry.getId(), databaseEntry.getDocument().toBytes());
+    }
 
-        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
+    @Override
+    protected void persistUpdate(@NotNull DatabaseEntry databaseEntry) {
+        this.sqlExecution.executeUpdate("UPDATE " + this.getName() + " SET data = ? WHERE id = ?", databaseEntry.getDocument().toBytes(), databaseEntry.getId());
+    }
 
-        this.sqlExecution.executeUpdate("UPDATE " + this.name + " SET data = ? WHERE id = ?", databaseEntry.getDocument().toBytes(), databaseEntry.getId());
-        this.entries.put(databaseEntry.getId(), databaseEntry);
+    @Override
+    protected void persistDelete(@NotNull String id) {
+        this.sqlExecution.executeUpdate("DELETE FROM " + this.getName() + " WHERE id = ?", id);
+    }
 
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
+    @Override
+    protected long countRemote() {
+
+        return this.sqlExecution.executeQuery("SELECT COUNT(*) FROM " + this.getName(), resultSet -> {
+
+            try {
+                return resultSet.next() ? resultSet.getLong(1) : 0L;
+            } catch (final SQLException exception) {
+                exception.printStackTrace();
+                return 0L;
+            }
+
+        }, 0L);
 
     }
 
     @Override
-    public void delete(@NotNull String id) {
+    protected boolean existsRemote(@NotNull String id) {
 
-        if (!this.exists(id)) throw new NoSuchEntryFound(id);
+        return this.sqlExecution.executeQuery("SELECT 1 FROM " + this.getName() + " WHERE id = ?", resultSet -> {
 
-        this.sqlExecution.executeUpdate("DELETE FROM " + this.name + " WHERE id = ?", id);
-        this.entries.remove(id);
+            try {
+                return resultSet.next();
+            } catch (final SQLException exception) {
+                exception.printStackTrace();
+                return false;
+            }
+
+        }, false, id);
 
     }
 
     @Override
-    public long count() {
-        return this.entries.size();
-    }
-
-    @Override
-    public void clear() {
-        this.sqlExecution.executeUpdate("TRUNCATE TABLE " + this.name);
-        this.entries.clear();
-    }
-
-    @Override
-    public boolean exists(@NotNull String id) {
-        return this.entries.containsKey(id);
-    }
-
-    @Override
-    public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
-        return Optional.ofNullable(this.entries.get(id));
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return List.copyOf(this.entries.values());
+    protected void clearRemote() {
+        this.sqlExecution.executeUpdate("TRUNCATE TABLE " + this.getName());
     }
 
 }

@@ -1,16 +1,13 @@
 package de.lino.database.database.nosql.csv;
 
-import com.google.common.collect.Maps;
-import de.lino.database.DatabaseRepositoryRegistry;
-import de.lino.database.database.exception.DataAlreadyExist;
-import de.lino.database.database.exception.NoSuchEntryFound;
+import de.lino.database.database.AbstractCachedDatabaseSection;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.json.file.FileProvider;
 import de.lino.database.database.DatabaseSection;
 import de.lino.database.database.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -19,26 +16,25 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * The {@link DatabaseSection} backing one CSV file, one row per entry as
  * {@code <base64 id>,<base64 data>} - both columns Base64-encoded so neither an entry's id nor
  * its serialized document can ever contain a comma, quote or newline that would otherwise need
- * RFC 4180-style escaping to round-trip correctly. Entries are cached in memory (loaded once in
- * the constructor and kept in sync on every write) so reads never touch the filesystem, only
- * writes do; since a CSV file has no notion of an in-place row update, {@link #update} and
- * {@link #delete} rewrite the whole file from {@link #entries} rather than editing a single line,
- * while {@link #insert} just appends.
+ * RFC 4180-style escaping to round-trip correctly. All caching lives in
+ * {@link AbstractCachedDatabaseSection}; this class only supplies the file's storage primitives.
+ * <p>
+ * A single CSV file has no notion of an in-place row update, so {@link #persistUpdate} and
+ * {@link #persistDelete} rewrite the whole file rather than editing a single line, while
+ * {@link #persistInsert} just appends; for the same reason every point primitive
+ * ({@link #fetchOne}, {@link #existsRemote}, {@link #countRemote}) is a scan over the file's
+ * lines rather than a true point lookup - a full in-memory cache remains the natural fit for
+ * this store.
  */
 @Getter
-public class CSVDatabaseSection implements DatabaseSection {
-
-    /**
-     * This section's file name, without the {@code .csv} extension.
-     */
-    private final String name;
+public class CSVDatabaseSection extends AbstractCachedDatabaseSection {
 
     /**
      * The CSV file this section wraps.
@@ -46,23 +42,16 @@ public class CSVDatabaseSection implements DatabaseSection {
     private final Path file;
 
     /**
-     * Every entry currently in {@link #file}, keyed by id and kept in sync with the filesystem
-     * by every write method; the source of truth for every read method.
-     */
-    private final Map<String, DatabaseEntry> entries;
-
-    /**
-     * Creates (if not already present) {@code file} and loads its existing rows into
-     * {@link #entries}.
+     * Creates (if not already present) {@code file} and loads its existing rows into the
+     * inherited in-memory view, via {@link #reload()}.
      *
      * @param name this section's file name, without the {@code .csv} extension
      * @param file the CSV file this section wraps
      */
     public CSVDatabaseSection(@NotNull final String name, @NotNull final Path file) {
 
-        this.name = name;
+        super(name);
         this.file = file;
-        this.entries = Maps.newConcurrentMap();
 
         this.reload();
 
@@ -71,36 +60,49 @@ public class CSVDatabaseSection implements DatabaseSection {
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #entries} entirely and re-populates it from every row currently
-     * in {@link #file}, the same scan the constructor itself runs - so a row added,
-     * changed or removed directly on disk since this section was constructed (e.g. a
-     * backup restored while the application was already running) is picked up here
-     * even though ordinary reads never touch the filesystem.
+     * Streams {@link #file} line by line rather than reading every line into memory first,
+     * (re-)creating the file beforehand so a freshly created section starts from an existing,
+     * empty file rather than failing to read a missing one. Blank lines are skipped, matching
+     * what {@link #persistInsert}'s trailing line separator leaves behind.
      */
     @Override
-    public void reload() {
+    protected void loadAll(@NotNull final Consumer<DatabaseEntry> consumer) {
 
         FileProvider.getInstance().createFile(this.file);
-        this.entries.clear();
 
-        for (final String line : readLines(this.file)) {
+        try (final var lines = Files.lines(this.file, StandardCharsets.UTF_8)) {
 
-            if (line.isBlank()) continue;
+            lines.forEach(line -> {
+                if (line.isBlank()) return;
+                consumer.accept(parseRow(line));
+            });
 
-            final int separator = line.indexOf(',');
-            final String id = decode(line.substring(0, separator));
-            final byte[] data = Base64.getDecoder().decode(line.substring(separator + 1));
-
-            this.entries.put(id, new DatabaseEntry(id, new JsonDocument(data)));
-
+        } catch (final IOException exception) {
+            exception.printStackTrace();
         }
 
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A bounded scan over the file's rows, comparing decoded ids - a single CSV file offers no
+     * cheaper point lookup; see the class documentation.
+     */
     @Override
-    public void insert(@NotNull final DatabaseEntry databaseEntry) {
+    protected Optional<DatabaseEntry> fetchOne(@NotNull final String id) {
 
-        if (this.entries.putIfAbsent(databaseEntry.getId(), databaseEntry) != null) throw new DataAlreadyExist(databaseEntry.getId());
+        for (final String line : readLines(this.file)) {
+            if (line.isBlank()) continue;
+            if (rowId(line).equals(id)) return Optional.of(parseRow(line));
+        }
+
+        return Optional.empty();
+
+    }
+
+    @Override
+    protected void persistInsert(@NotNull final DatabaseEntry databaseEntry) {
 
         try {
             Files.writeString(this.file, row(databaseEntry) + System.lineSeparator(), StandardCharsets.UTF_8, StandardOpenOption.APPEND);
@@ -108,71 +110,109 @@ public class CSVDatabaseSection implements DatabaseSection {
             exception.printStackTrace();
         }
 
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
-
     }
 
     @Override
-    public void update(@NotNull final DatabaseEntry databaseEntry) {
-
-        if (!this.exists(databaseEntry.getId())) throw new NoSuchEntryFound(databaseEntry.getId());
-
-        this.entries.put(databaseEntry.getId(), databaseEntry);
-        this.rewrite();
-
-        DatabaseRepositoryRegistry.logBytes("The database entry contained %d Bytes", databaseEntry.getDocument());
-
+    protected void persistUpdate(@NotNull final DatabaseEntry databaseEntry) {
+        this.rewrite(databaseEntry.getId(), databaseEntry);
     }
 
     @Override
-    public void delete(@NotNull final String id) {
-
-        if (!this.exists(id)) throw new NoSuchEntryFound(id);
-
-        this.entries.remove(id);
-        this.rewrite();
-
-    }
-
-    @Override
-    public long count() {
-        return this.entries.size();
-    }
-
-    @Override
-    public void clear() {
-        this.entries.clear();
-        this.rewrite();
-    }
-
-    @Override
-    public boolean exists(@NotNull final String id) {
-        return this.entries.containsKey(id);
-    }
-
-    @Override
-    public Optional<DatabaseEntry> findEntryById(@NotNull final String id) {
-        return Optional.ofNullable(this.entries.get(id));
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseEntry> getEntries() {
-        return List.copyOf(this.entries.values());
+    protected void persistDelete(@NotNull final String id) {
+        this.rewrite(id, null);
     }
 
     /**
-     * Overwrites {@link #file} with one row per current entry of {@link #entries}.
+     * {@inheritDoc}
+     * <p>
+     * A scan counting the file's non-blank lines - each one is exactly one row.
      */
-    private void rewrite() {
+    @Override
+    protected long countRemote() {
+        return readLines(this.file).stream().filter(line -> !line.isBlank()).count();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A bounded scan over the file's rows, comparing decoded ids only - the row's data column
+     * is never parsed here.
+     */
+    @Override
+    protected boolean existsRemote(@NotNull final String id) {
+
+        for (final String line : readLines(this.file)) {
+            if (!line.isBlank() && rowId(line).equals(id)) return true;
+        }
+
+        return false;
+
+    }
+
+    @Override
+    protected void clearRemote() {
+
+        try {
+            Files.writeString(this.file, "", StandardCharsets.UTF_8);
+        } catch (final IOException exception) {
+            exception.printStackTrace();
+        }
+
+    }
+
+    /**
+     * Rewrites {@link #file} without the row stored under {@code rowId}, appending
+     * {@code replacement}'s row instead if one is given - the single read-modify-write shape
+     * {@link #persistUpdate} (replace) and {@link #persistDelete} (drop) share, since a CSV
+     * file cannot edit one line in place.
+     *
+     * @param rowId       the id whose stored row is removed
+     * @param replacement the entry whose row is appended in its place, or {@code null} to just
+     *                    drop the row
+     */
+    private void rewrite(@NotNull final String rowId, @Nullable final DatabaseEntry replacement) {
 
         final StringBuilder builder = new StringBuilder();
-        for (final DatabaseEntry entry : this.entries.values()) builder.append(row(entry)).append(System.lineSeparator());
+
+        for (final String line : readLines(this.file)) {
+            if (line.isBlank() || rowId(line).equals(rowId)) continue;
+            builder.append(line).append(System.lineSeparator());
+        }
+
+        if (replacement != null) builder.append(row(replacement)).append(System.lineSeparator());
 
         try {
             Files.writeString(this.file, builder.toString(), StandardCharsets.UTF_8);
         } catch (final IOException exception) {
             exception.printStackTrace();
         }
+
+    }
+
+    /**
+     * Decodes a row's id column without touching its data column, so id-only scans
+     * ({@link #existsRemote}, {@link #rewrite}) skip the far larger document payload.
+     *
+     * @param line the row to read
+     * @return the row's decoded id
+     */
+    private static @NotNull String rowId(@NotNull final String line) {
+        return decode(line.substring(0, line.indexOf(',')));
+    }
+
+    /**
+     * Parses one CSV row back into a {@link DatabaseEntry}, the inverse of {@link #row}.
+     *
+     * @param line the row to parse
+     * @return the parsed entry
+     */
+    private static @NotNull DatabaseEntry parseRow(@NotNull final String line) {
+
+        final int separator = line.indexOf(',');
+        final String id = decode(line.substring(0, separator));
+        final byte[] data = Base64.getDecoder().decode(line.substring(separator + 1));
+
+        return new DatabaseEntry(id, new JsonDocument(data));
 
     }
 
