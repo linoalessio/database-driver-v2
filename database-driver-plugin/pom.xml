@@ -35,6 +35,13 @@
                     <target>21</target>
                 </configuration>
             </plugin>
+            <!-- Pinned so JUnit 5 tests actually run: the surefire version otherwise depends on
+                 the builder's Maven release, and pre-2.22 defaults silently skip Jupiter tests. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
@@ -152,6 +159,14 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>5.5.1</version>
+        </dependency>
+
+        <!-- Engine/cache-mode tests against the server-less backends (JSON, CSV, SQLite) -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
         </dependency>
 
     </dependencies>

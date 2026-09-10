@@ -32,18 +32,32 @@ public class MongoDBDatabaseSection extends AbstractCachedDatabaseSection {
     private final MongoCollection<Document> collection;
 
     /**
-     * Loads {@code name}'s existing documents into the inherited in-memory view, via
-     * {@link #reload()}.
+     * Loads {@code name}'s existing documents into memory immediately - the historical
+     * constructor, kept with its exact loaded-once-constructed semantics for anyone
+     * instantiating sections directly rather than through a provider.
      *
      * @param mongoDatabase the database {@code name}'s collection belongs to
      * @param name          this section's collection name
      */
     public MongoDBDatabaseSection(@NotNull MongoDatabase mongoDatabase, @NotNull String name) {
+        this(mongoDatabase, name, SectionConfig.full());
+        this.warmUp();
+    }
 
-        super(name);
+    /**
+     * Prepares the section without reading any document - MongoDB materializes a collection on
+     * its first write, so there is no container to create either; whether and when documents
+     * are loaded is the engine's decision per {@code config}, with the owning provider
+     * triggering the {@link CacheMode#FULL} warm-up right after construction.
+     *
+     * @param mongoDatabase the database {@code name}'s collection belongs to
+     * @param name          this section's collection name
+     * @param config        how this section holds entries in memory
+     */
+    public MongoDBDatabaseSection(@NotNull MongoDatabase mongoDatabase, @NotNull String name, @NotNull SectionConfig config) {
+
+        super(name, config);
         this.collection = mongoDatabase.getCollection(name);
-
-        this.reload();
 
     }
 

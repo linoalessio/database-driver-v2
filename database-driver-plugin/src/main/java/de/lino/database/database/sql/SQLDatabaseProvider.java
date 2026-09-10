@@ -1,26 +1,28 @@
 package de.lino.database.database.sql;
 
-import com.google.common.collect.Maps;
+import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.AbstractLazyDatabaseProvider;
 import de.lino.database.database.DatabaseProvider;
 import de.lino.database.database.DatabaseSection;
 import de.lino.database.database.DatabaseType;
-import lombok.SneakyThrows;
+import de.lino.database.database.SectionConfig;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
 
 import java.sql.SQLException;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * The shared {@link DatabaseProvider} implementation behind every SQL vendor this driver
  * supports (MySQL, PostgreSQL, MariaDB, SQLite, H2, Oracle, Microsoft SQL Server, Apache Derby -
  * see the vendor-specific subclasses in the sibling packages), each {@link DatabaseSection}
  * mapping to one table, all sharing this database's single {@link SQLExecution} connection pool.
+ * Section lifecycle and caching live in {@link AbstractLazyDatabaseProvider}; this class only
+ * supplies the vendor-aware storage operations - listing tables, constructing a
+ * {@link SQLDatabaseSection}, dropping a table.
  */
-public class SQLDatabaseProvider implements DatabaseProvider {
+public class SQLDatabaseProvider extends AbstractLazyDatabaseProvider {
 
     /**
      * The SQL vendor this database is connected to, needed to pick the right table-listing
@@ -34,23 +36,17 @@ public class SQLDatabaseProvider implements DatabaseProvider {
     private final SQLExecution sqlExecution;
 
     /**
-     * Every registered section, keyed by table name.
-     */
-    private final Map<String, DatabaseSection> databaseSections;
-
-    /**
-     * Connects via {@code sqlExecution} and loads every existing table of {@code databaseType} as
-     * a {@link SQLDatabaseSection}.
+     * Connects via {@code sqlExecution} and discovers every existing table's name of
+     * {@code databaseType}. Only names - no section objects, no row data - so construction
+     * cost is one table-listing query, independent of how much the database holds.
      *
      * @param databaseType  the SQL vendor being connected to
      * @param sqlExecution  the connection pool to run every query and update through
      */
-    @SneakyThrows
     public SQLDatabaseProvider(@NotNull DatabaseType databaseType, @NotNull SQLExecution sqlExecution) {
 
         this.databaseType = databaseType;
         this.sqlExecution = sqlExecution;
-        this.databaseSections = Maps.newConcurrentMap();
 
         this.reload();
 
@@ -59,71 +55,41 @@ public class SQLDatabaseProvider implements DatabaseProvider {
     @Override
     public void shutdown() {
         this.sqlExecution.shutdown();
-        this.databaseSections.clear();
+        this.forgetSections();
     }
 
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
-     * {@link SQLDatabaseSection} per table currently reported by {@link #getPattern},
-     * the same query the constructor itself runs.
+     * Runs {@link #getPattern}'s vendor-specific table-listing query, streaming each
+     * {@code TABLE_NAME} to {@code consumer}.
      */
     @Override
-    @SneakyThrows
-    public void reload() {
+    protected void discoverNames(@NotNull Consumer<String> consumer) {
 
-        this.databaseSections.clear();
-        String tablePattern = getPattern(this.databaseType);
-
-        this.sqlExecution.executeQueryAsync(tablePattern, resultSet -> {
+        this.sqlExecution.executeQuery(getPattern(this.databaseType), resultSet -> {
 
             try {
 
-                while (resultSet.next()) {
-                    String tableName = resultSet.getString("TABLE_NAME");
-                    this.databaseSections.put(tableName, new SQLDatabaseSection(this.databaseType, tableName, this.sqlExecution));
-                }
+                while (resultSet.next()) consumer.accept(resultSet.getString("TABLE_NAME"));
 
             } catch (final SQLException exception) {
                 exception.printStackTrace();
             }
 
             return true;
-        }, true).get();
+        }, true);
 
     }
 
     @Override
-    public DatabaseSection createSection(@NotNull String name) {
-        return this.databaseSections.computeIfAbsent(name, key -> new SQLDatabaseSection(this.databaseType, key, this.sqlExecution));
+    protected AbstractCachedDatabaseSection constructSection(@NotNull String name, @NotNull SectionConfig config) {
+        return new SQLDatabaseSection(this.databaseType, name, this.sqlExecution, config);
     }
 
     @Override
-    public void deleteSection(@NotNull String name) {
+    protected void dropSectionRemote(@NotNull String name) {
         this.sqlExecution.executeUpdate("DROP TABLE " + name);
-        this.databaseSections.remove(name);
-    }
-
-    @Override
-    public boolean existsSection(@NotNull String name) {
-        return this.databaseSections.containsKey(name);
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseSection> getSections() {
-        return List.copyOf(this.databaseSections.values());
-    }
-
-    @Override
-    public Optional<DatabaseSection> getSection(@NotNull String name) {
-        return Optional.ofNullable(this.databaseSections.get(name));
-    }
-
-    @Override
-    public void clear() {
-        for (DatabaseSection databaseSection : this.getSections()) databaseSection.clear();
-        this.databaseSections.clear();
     }
 
     /**
@@ -141,13 +107,13 @@ public class SQLDatabaseProvider implements DatabaseProvider {
 
         final List<CompletableFuture<Void>> pending = this.getSections().stream().map(DatabaseSection::clearAsync).toList();
 
-        return CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new)).thenRun(this.databaseSections::clear);
+        return CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new)).thenRun(this::forgetSections);
 
     }
 
     /**
      * Builds the vendor-specific query that lists every existing table's name as
-     * {@code TABLE_NAME}, used by the constructor to load existing {@link SQLDatabaseSection}s.
+     * {@code TABLE_NAME}, used by {@link #discoverNames} to enumerate this database's sections.
      *
      * @param databaseType the SQL vendor to build a table-listing query for
      * @return the vendor-specific table-listing query

@@ -1,35 +1,31 @@
 package de.lino.database.database.nosql.rethinkdb;
 
-import com.google.common.collect.Maps;
 import com.rethinkdb.RethinkDB;
 import com.rethinkdb.gen.ast.Db;
 import com.rethinkdb.net.Connection;
 import com.rethinkdb.net.Result;
+import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.AbstractLazyDatabaseProvider;
+import de.lino.database.database.SectionConfig;
 import de.lino.database.database.auth.Credentials;
 import de.lino.database.database.DatabaseProvider;
 import de.lino.database.database.DatabaseSection;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * The {@link DatabaseProvider} backed by a RethinkDB database, each {@link DatabaseSection} a
  * table via {@link RethinkDBDatabaseSection}, all sharing this database's single
- * {@link Connection}. RethinkDB's {@link Connection} multiplexes concurrent queries over one
- * underlying socket and is itself thread-safe, so every method here is safe to call
- * concurrently without additional locking.
+ * {@link Connection}. Section lifecycle and caching live in {@link AbstractLazyDatabaseProvider};
+ * this class only supplies the table-level storage operations - listing tables, constructing a
+ * {@link RethinkDBDatabaseSection}, dropping a table. RethinkDB's {@link Connection} multiplexes
+ * concurrent queries over one underlying socket and is itself thread-safe, so every method here
+ * is safe to call concurrently without additional locking.
  */
 @Getter
-public class RethinkDBDatabaseProvider implements DatabaseProvider {
-
-    /**
-     * Every registered section, keyed by table name.
-     */
-    private final Map<String, DatabaseSection> databaseSections;
+public class RethinkDBDatabaseProvider extends AbstractLazyDatabaseProvider {
 
     /**
      * The connection shared by this database and every {@link RethinkDBDatabaseSection} it creates.
@@ -42,14 +38,13 @@ public class RethinkDBDatabaseProvider implements DatabaseProvider {
     private final Db db;
 
     /**
-     * Connects to a RethinkDB database with {@code credentials} and loads every existing table
-     * as a {@link RethinkDBDatabaseSection}.
+     * Connects to a RethinkDB database with {@code credentials} and discovers every existing
+     * table's name. Only names - no section objects, no rows - so construction cost is one
+     * {@code tableList} query, independent of how much the database holds.
      *
      * @param credentials the login credentials and connection details to connect with
      */
     public RethinkDBDatabaseProvider(@NotNull Credentials credentials) {
-
-        this.databaseSections = Maps.newConcurrentMap();
 
         this.connection = RethinkDB.r.connection()
                 .hostname(credentials.getAddress())
@@ -66,60 +61,32 @@ public class RethinkDBDatabaseProvider implements DatabaseProvider {
     @Override
     public void shutdown() {
         this.connection.close();
-        this.databaseSections.clear();
+        this.forgetSections();
     }
 
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
-     * {@link RethinkDBDatabaseSection} per table currently in {@link #db}, the same
-     * scan the constructor itself runs.
+     * Runs the database's {@code tableList} query, streaming each table name to
+     * {@code consumer}.
      */
     @Override
-    public void reload() {
-
-        this.databaseSections.clear();
+    protected void discoverNames(@NotNull Consumer<String> consumer) {
 
         try (final Result<String> names = this.db.tableList().run(this.connection, String.class)) {
-
-            names.forEach(name ->
-                    this.databaseSections.put(name, new RethinkDBDatabaseSection(name, this.connection, this.db)));
-
+            names.forEach(consumer);
         }
 
     }
 
     @Override
-    public DatabaseSection createSection(@NotNull String name) {
-        return this.databaseSections.computeIfAbsent(name, key -> new RethinkDBDatabaseSection(key, this.connection, this.db));
+    protected AbstractCachedDatabaseSection constructSection(@NotNull String name, @NotNull SectionConfig config) {
+        return new RethinkDBDatabaseSection(name, this.connection, this.db, config);
     }
 
     @Override
-    public void deleteSection(@NotNull String name) {
+    protected void dropSectionRemote(@NotNull String name) {
         this.db.tableDrop(name).run(this.connection);
-        this.databaseSections.remove(name);
-    }
-
-    @Override
-    public boolean existsSection(@NotNull String name) {
-        return this.databaseSections.containsKey(name);
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseSection> getSections() {
-        return List.copyOf(this.databaseSections.values());
-    }
-
-    @Override
-    public Optional<DatabaseSection> getSection(@NotNull String name) {
-        return Optional.ofNullable(this.databaseSections.get(name));
-    }
-
-    @Override
-    public void clear() {
-        for (DatabaseSection databaseSection : this.getSections()) databaseSection.clear();
-        this.databaseSections.clear();
     }
 
 }

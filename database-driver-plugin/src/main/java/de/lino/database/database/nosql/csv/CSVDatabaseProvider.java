@@ -1,26 +1,28 @@
 package de.lino.database.database.nosql.csv;
 
-import com.google.common.collect.Maps;
+import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.AbstractLazyDatabaseProvider;
+import de.lino.database.database.SectionConfig;
 import de.lino.database.database.auth.Credentials;
 import de.lino.database.json.file.FileProvider;
 import de.lino.database.database.DatabaseProvider;
 import de.lino.database.database.DatabaseSection;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
 
 import java.io.File;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * The CSV-file-based {@link DatabaseProvider}: every {@link DatabaseSection} is one
  * {@code "<name>.csv"} file directly under {@link Credentials}'s {@code getFileRepository()},
- * via {@link CSVDatabaseSection}.
+ * via {@link CSVDatabaseSection}. Section lifecycle and caching live in
+ * {@link AbstractLazyDatabaseProvider}; this class only supplies the file-level storage
+ * operations - listing {@value #EXTENSION} files, constructing a {@link CSVDatabaseSection},
+ * deleting a file.
  */
-public class CSVDatabaseProvider implements DatabaseProvider {
+public class CSVDatabaseProvider extends AbstractLazyDatabaseProvider {
 
     /**
      * The file extension every section's file carries.
@@ -33,13 +35,10 @@ public class CSVDatabaseProvider implements DatabaseProvider {
     private final Path repository;
 
     /**
-     * Every registered section, keyed by file name (without {@link #EXTENSION}).
-     */
-    private final Map<String, DatabaseSection> databaseSections;
-
-    /**
-     * Loads every existing {@value #EXTENSION} file directly under {@code credentials}' file
-     * repository as a {@link CSVDatabaseSection}.
+     * Discovers every existing {@value #EXTENSION} file directly under {@code credentials}'
+     * file repository as a section name. Only names - no section objects, no file contents -
+     * so construction cost is one directory listing, independent of how much data the
+     * repository holds.
      *
      * @param credentials the login credentials, providing the file repository root this
      *                    database's sections live under
@@ -47,7 +46,6 @@ public class CSVDatabaseProvider implements DatabaseProvider {
     public CSVDatabaseProvider(@NotNull final Credentials credentials) {
 
         this.repository = Path.of(credentials.getFileRepository());
-        this.databaseSections = Maps.newConcurrentMap();
 
         this.reload();
 
@@ -60,55 +58,31 @@ public class CSVDatabaseProvider implements DatabaseProvider {
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
-     * {@link CSVDatabaseSection} per {@value #EXTENSION} file currently under
-     * {@link #repository}, the same scan the constructor itself runs.
+     * Lists the repository's {@value #EXTENSION} files, (re-)creating the repository root
+     * first so a fresh installation starts from an existing, empty directory rather than
+     * failing to list a missing one; each file name minus the extension is one section name.
      */
     @Override
-    public void reload() {
+    protected void discoverNames(@NotNull Consumer<String> consumer) {
 
         FileProvider.getInstance().createDirectory(this.repository);
-        this.databaseSections.clear();
 
         final File[] files = this.repository.toFile().listFiles((directory, fileName) -> fileName.endsWith(EXTENSION));
 
         for (final File file : Objects.requireNonNull(files)) {
-            final String name = file.getName().substring(0, file.getName().length() - EXTENSION.length());
-            this.databaseSections.put(name, new CSVDatabaseSection(name, file.toPath()));
+            consumer.accept(file.getName().substring(0, file.getName().length() - EXTENSION.length()));
         }
 
     }
 
     @Override
-    public DatabaseSection createSection(@NotNull final String name) {
-        return this.databaseSections.computeIfAbsent(name, key -> new CSVDatabaseSection(key, this.repository.resolve(key + EXTENSION)));
+    protected AbstractCachedDatabaseSection constructSection(@NotNull String name, @NotNull SectionConfig config) {
+        return new CSVDatabaseSection(name, this.repository.resolve(name + EXTENSION), config);
     }
 
     @Override
-    public void deleteSection(@NotNull final String name) {
+    protected void dropSectionRemote(@NotNull String name) {
         FileProvider.getInstance().deleteFile(this.repository.resolve(name + EXTENSION));
-        this.databaseSections.remove(name);
-    }
-
-    @Override
-    public boolean existsSection(@NotNull final String name) {
-        return this.databaseSections.containsKey(name);
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseSection> getSections() {
-        return List.copyOf(this.databaseSections.values());
-    }
-
-    @Override
-    public Optional<DatabaseSection> getSection(@NotNull final String name) {
-        return Optional.ofNullable(this.databaseSections.get(name));
-    }
-
-    @Override
-    public void clear() {
-        for (final DatabaseSection databaseSection : this.getSections()) databaseSection.clear();
-        this.databaseSections.clear();
     }
 
 }

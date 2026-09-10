@@ -1,23 +1,29 @@
 package de.lino.database.database.nosql.json;
 
-import com.google.common.collect.Maps;
+import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.AbstractLazyDatabaseProvider;
+import de.lino.database.database.SectionConfig;
 import de.lino.database.database.auth.Credentials;
 import de.lino.database.json.file.FileProvider;
 import de.lino.database.database.DatabaseProvider;
 import de.lino.database.database.DatabaseSection;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.UnmodifiableView;
 
 import java.io.File;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * The file-based {@link DatabaseProvider}: every {@link DatabaseSection} is a subdirectory of
  * {@link Credentials}'s {@code getFileRepository()}, holding one JSON file per entry, via
- * {@link JsonDatabaseSection}.
+ * {@link JsonDatabaseSection}. Section lifecycle and caching live in
+ * {@link AbstractLazyDatabaseProvider}; this class only supplies the directory-level storage
+ * operations - listing subdirectories, constructing a {@link JsonDatabaseSection}, deleting a
+ * subdirectory.
  */
-public class JsonDatabaseProvider implements DatabaseProvider {
+public class JsonDatabaseProvider extends AbstractLazyDatabaseProvider {
 
     /**
      * The login credentials this database was constructed with, needed to resolve every new
@@ -26,13 +32,9 @@ public class JsonDatabaseProvider implements DatabaseProvider {
     private final Credentials credentials;
 
     /**
-     * Every registered section, keyed by name.
-     */
-    private final Map<String, DatabaseSection> databaseSections;
-
-    /**
-     * Loads every existing subdirectory of {@code credentials}' file repository as a
-     * {@link JsonDatabaseSection}, via {@link #reload()}.
+     * Discovers every existing subdirectory of {@code credentials}' file repository as a
+     * section name. Only names - no section objects, no file contents - so construction cost
+     * is one directory listing, independent of how much data the repository holds.
      *
      * @param credentials the login credentials, providing the file repository root this
      *                    database's sections live under
@@ -40,7 +42,6 @@ public class JsonDatabaseProvider implements DatabaseProvider {
     public JsonDatabaseProvider(@NotNull Credentials credentials) {
 
         this.credentials = credentials;
-        this.databaseSections = Maps.newConcurrentMap();
 
         this.reload();
 
@@ -53,12 +54,9 @@ public class JsonDatabaseProvider implements DatabaseProvider {
     /**
      * {@inheritDoc}
      * <p>
-     * Discards {@link #databaseSections} entirely and rebuilds it with a fresh
-     * {@link JsonDatabaseSection} per subdirectory currently under {@code credentials}'
-     * file repository, the same scan the constructor itself runs - so a subdirectory
-     * added or removed directly on disk since this database was constructed (e.g. a
-     * backup restored while the application was already running) is picked up here,
-     * and every rebuilt section starts with a fresh read of its own contents.
+     * Lists the file repository's subdirectories, (re-)creating the repository root first so a
+     * fresh installation starts from an existing, empty directory rather than failing to list
+     * a missing one.
      * <p>
      * Only directories are considered; a stray non-directory file sitting directly in
      * the file repository (most commonly a filesystem-managed one such as macOS'
@@ -68,51 +66,23 @@ public class JsonDatabaseProvider implements DatabaseProvider {
      * a directory it can list.
      */
     @Override
-    public void reload() {
+    protected void discoverNames(@NotNull Consumer<String> consumer) {
 
-        FileProvider.getInstance().createDirectory(Paths.get(credentials.getFileRepository()));
-        this.databaseSections.clear();
+        FileProvider.getInstance().createDirectory(Paths.get(this.credentials.getFileRepository()));
 
-        Arrays.stream(Objects.requireNonNull(Paths.get(credentials.getFileRepository()).toFile().listFiles(File::isDirectory))).forEach(path -> {
-
-            final String name = path.getName();
-            final DatabaseSection databaseSection = new JsonDatabaseSection(name, credentials);
-            this.databaseSections.put(name, databaseSection);
-
-        });
+        Arrays.stream(Objects.requireNonNull(Paths.get(this.credentials.getFileRepository()).toFile().listFiles(File::isDirectory)))
+                .forEach(path -> consumer.accept(path.getName()));
 
     }
 
     @Override
-    public DatabaseSection createSection(@NotNull String name) {
-        return this.databaseSections.computeIfAbsent(name, key -> new JsonDatabaseSection(key, this.credentials));
+    protected AbstractCachedDatabaseSection constructSection(@NotNull String name, @NotNull SectionConfig config) {
+        return new JsonDatabaseSection(name, this.credentials, config);
     }
 
     @Override
-    public void deleteSection(@NotNull String name) {
+    protected void dropSectionRemote(@NotNull String name) {
         FileProvider.getInstance().deleteDirectory(Paths.get(this.credentials.getFileRepository(), name));
-        this.databaseSections.remove(name);
-    }
-
-    @Override
-    public boolean existsSection(@NotNull String name) {
-        return this.databaseSections.containsKey(name);
-    }
-
-    @Override
-    public @UnmodifiableView List<DatabaseSection> getSections() {
-        return List.copyOf(this.databaseSections.values());
-    }
-
-    @Override
-    public Optional<DatabaseSection> getSection(@NotNull String name) {
-        return Optional.ofNullable(this.databaseSections.get(name));
-    }
-
-    @Override
-    public void clear() {
-        for (DatabaseSection databaseSection : this.getSections()) databaseSection.clear();
-        this.databaseSections.clear();
     }
 
 }

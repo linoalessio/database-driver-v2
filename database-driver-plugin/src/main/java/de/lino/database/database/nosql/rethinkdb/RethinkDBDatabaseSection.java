@@ -9,6 +9,8 @@ import com.rethinkdb.net.Connection;
 import com.rethinkdb.net.Result;
 import com.rethinkdb.utils.Types;
 import de.lino.database.database.AbstractCachedDatabaseSection;
+import de.lino.database.database.CacheMode;
+import de.lino.database.database.SectionConfig;
 import de.lino.database.database.exception.NoSuchDataFound;
 import de.lino.database.json.JsonDocument;
 import de.lino.database.database.DatabaseSection;
@@ -47,21 +49,36 @@ public class RethinkDBDatabaseSection extends AbstractCachedDatabaseSection {
     private final Table table;
 
     /**
-     * Loads {@code name}'s existing rows into the inherited in-memory view, via
-     * {@link #reload()}.
+     * Loads {@code name}'s existing rows into memory immediately - the historical constructor,
+     * kept with its exact loaded-once-constructed semantics for anyone instantiating sections
+     * directly rather than through a provider.
      *
      * @param name       this section's table name
      * @param connection the connection to run every query through
      * @param db         the database {@code name}'s table belongs to
      */
     public RethinkDBDatabaseSection(@NotNull String name, @NotNull Connection connection, @NotNull Db db) {
+        this(name, connection, db, SectionConfig.full());
+        this.warmUp();
+    }
 
-        super(name);
+    /**
+     * Prepares the section without running any query - {@code db.table(name)} only builds a
+     * ReQL term, and (as historically) no {@code tableCreate} is issued here; whether and when
+     * rows are loaded is the engine's decision per {@code config}, with the owning provider
+     * triggering the {@link CacheMode#FULL} warm-up right after construction.
+     *
+     * @param name       this section's table name
+     * @param connection the connection to run every query through
+     * @param db         the database {@code name}'s table belongs to
+     * @param config     how this section holds entries in memory
+     */
+    public RethinkDBDatabaseSection(@NotNull String name, @NotNull Connection connection, @NotNull Db db, @NotNull SectionConfig config) {
+
+        super(name, config);
         this.connection = connection;
         this.cache = Types.mapOf(String.class, String.class);
         this.table = db.table(name);
-
-        this.reload();
 
     }
 
