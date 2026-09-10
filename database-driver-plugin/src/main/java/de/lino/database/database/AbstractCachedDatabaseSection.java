@@ -11,11 +11,14 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.PriorityQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -97,6 +100,32 @@ public abstract class AbstractCachedDatabaseSection implements DatabaseSection {
      * backend load instead of racing several.
      */
     private final Object loadLock = new Object();
+
+    /**
+     * How many {@link #findEntryById} calls this section has served, whatever mode - the
+     * denominator of the hit/miss split {@link #stats()} reports.
+     */
+    private final AtomicLong pointLookups = new AtomicLong();
+
+    /**
+     * How many point lookups had to read the backing store - {@link CacheMode#BOUNDED}'s cache
+     * loader runs plus every {@link CacheMode#NONE} lookup. The map-backed modes never
+     * increment this: once warm they answer from memory alone.
+     */
+    private final AtomicLong pointLoads = new AtomicLong();
+
+    /**
+     * How many full {@link #loadAll} passes the engine has run (warm-ups, {@link #reload()}s,
+     * whole-section enumerations in the non-materialized modes).
+     */
+    private final AtomicLong fullLoads = new AtomicLong();
+
+    /**
+     * Cumulative wall-clock nanoseconds spent inside those {@link #loadAll} passes - divided
+     * by {@link #fullLoads} it answers "what does loading this section actually cost", the
+     * number that decides between {@link CacheMode#FULL} and cheaper modes.
+     */
+    private final AtomicLong fullLoadNanos = new AtomicLong();
 
     /**
      * Prepares the engine's per-mode backing state. Deliberately loads <em>nothing</em>, in
@@ -275,7 +304,7 @@ public abstract class AbstractCachedDatabaseSection implements DatabaseSection {
             case FULL -> {
                 synchronized (this.loadLock) {
                     this.entries.clear();
-                    this.loadAll(entry -> this.entries.put(entry.getId(), entry));
+                    this.streamAll(entry -> this.entries.put(entry.getId(), entry));
                     this.loaded = true;
                 }
             }
@@ -442,6 +471,8 @@ public abstract class AbstractCachedDatabaseSection implements DatabaseSection {
     @Override
     public Optional<DatabaseEntry> findEntryById(@NotNull String id) {
 
+        this.pointLookups.incrementAndGet();
+
         return switch (this.config.cacheMode()) {
 
             case FULL, LAZY -> {
@@ -449,7 +480,10 @@ public abstract class AbstractCachedDatabaseSection implements DatabaseSection {
                 yield Optional.ofNullable(this.entries.get(id));
             }
             case BOUNDED -> this.boundedLookup(id);
-            case NONE -> this.fetchOne(id);
+            case NONE -> {
+                this.pointLoads.incrementAndGet();
+                yield this.fetchOne(id);
+            }
 
         };
 
@@ -474,11 +508,109 @@ public abstract class AbstractCachedDatabaseSection implements DatabaseSection {
             }
             case BOUNDED, NONE -> {
                 final List<DatabaseEntry> collected = new ArrayList<>();
-                this.loadAll(collected::add);
+                this.streamAll(collected::add);
                 yield List.copyOf(collected);
             }
 
         };
+
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Genuinely streaming in the non-materialized modes: {@link CacheMode#BOUNDED} and
+     * {@link CacheMode#NONE} hand {@code consumer} straight to {@link #loadAll}, so a section
+     * of any size is walked in constant memory (each backend's {@code loadAll} already reads
+     * in bounded batches). The map-backed modes iterate their in-memory view - already
+     * materialized, so streaming would save nothing.
+     */
+    @Override
+    public void forEachEntry(@NotNull Consumer<DatabaseEntry> consumer) {
+
+        switch (this.config.cacheMode()) {
+
+            case FULL, LAZY -> {
+                this.ensureLoaded();
+                this.entries.values().forEach(consumer);
+            }
+            case BOUNDED, NONE -> this.streamAll(consumer);
+
+        }
+
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The enumeration is ordered by entry id in every mode, so the same call yields the same
+     * page regardless of how the section is cached - a consumer can switch a section's
+     * {@link CacheMode} without its pagination changing meaning. The map-backed modes sort
+     * their in-memory view; the non-materialized modes delegate to {@link #pageRemote}, which
+     * backends override to push the paging into the store where it can (SQL
+     * {@code ORDER BY id LIMIT/OFFSET}, Mongo {@code sort/skip/limit} ...).
+     */
+    @Override
+    public @UnmodifiableView List<DatabaseEntry> getEntries(long offset, int limit) {
+
+        if (offset < 0) throw new IllegalArgumentException("@AbstractCachedDatabaseSection.getEntries: offset must not be negative, got " + offset);
+        if (limit < 0) throw new IllegalArgumentException("@AbstractCachedDatabaseSection.getEntries: limit must not be negative, got " + limit);
+        if (limit == 0) return List.of();
+
+        return switch (this.config.cacheMode()) {
+
+            case FULL, LAZY -> {
+                this.ensureLoaded();
+                yield this.entries.values().stream()
+                        .sorted(Comparator.comparing(DatabaseEntry::getId))
+                        .skip(offset)
+                        .limit(limit)
+                        .toList();
+            }
+            case BOUNDED, NONE -> this.pageRemote(offset, limit);
+
+        };
+
+    }
+
+    /**
+     * Reads one id-ordered page ({@code [offset, offset + limit)}) from the backing store, for
+     * the modes that hold no materialized view. This default is the order-stable
+     * stream-and-skip for backends without native paging: one {@link #loadAll} pass through a
+     * bounded window (a max-heap of the {@code offset + limit} smallest ids), so memory is
+     * bounded by the page's end position rather than the section's size, and no entry is read
+     * twice. Backends whose store can order and slice natively (SQL, MongoDB, RethinkDB ...)
+     * override this and push the whole page down instead - always in ascending id order, the
+     * contract {@link #getEntries(long, int)} promises across every mode and backend.
+     * <p>
+     * Callers paging <em>deeply</em> into an unsorted backend should know the window grows
+     * with {@code offset}; for a full sequential sweep, {@link #forEachEntry(Consumer)} is the
+     * constant-memory tool.
+     *
+     * @param offset how many id-ordered entries to skip; already validated non-negative
+     * @param limit  the most entries the page may hold; already validated positive
+     * @return the page's entries in ascending id order, empty once {@code offset} lies beyond
+     * the section's end
+     */
+    protected @UnmodifiableView List<DatabaseEntry> pageRemote(long offset, int limit) {
+
+        final long windowSize = offset + limit;
+
+        // Max-heap on id: after the pass it holds the windowSize smallest ids, i.e. every
+        // entry that could possibly fall into the requested page.
+        final PriorityQueue<DatabaseEntry> window = new PriorityQueue<>(Comparator.comparing(DatabaseEntry::getId).reversed());
+
+        this.streamAll(entry -> {
+            window.add(entry);
+            if (window.size() > windowSize) window.poll();
+        });
+
+        if (offset >= window.size()) return List.of();
+
+        final List<DatabaseEntry> ascending = new ArrayList<>(window);
+        ascending.sort(Comparator.comparing(DatabaseEntry::getId));
+
+        return List.copyOf(ascending.subList((int) offset, ascending.size()));
 
     }
 
@@ -498,7 +630,7 @@ public abstract class AbstractCachedDatabaseSection implements DatabaseSection {
             if (this.loaded) return;
 
             this.entries.clear();
-            this.loadAll(entry -> this.entries.put(entry.getId(), entry));
+            this.streamAll(entry -> this.entries.put(entry.getId(), entry));
             this.loaded = true;
 
         }
@@ -539,7 +671,109 @@ public abstract class AbstractCachedDatabaseSection implements DatabaseSection {
      * @return a future resolving to the stored entry, or failing with {@link NoSuchEntryFound}
      */
     private CompletableFuture<DatabaseEntry> loadEntry(@NotNull String id) {
+        this.pointLoads.incrementAndGet();
         return CompletableFuture.supplyAsync(() -> this.fetchOne(id).orElseThrow(() -> new NoSuchEntryFound(id)));
+    }
+
+    /**
+     * Runs {@link #loadAll} with the engine's bookkeeping around it - every whole-section pass
+     * the engine itself triggers goes through here, so {@link #stats()} can report how often
+     * this section is fully read and what each pass costs. Backend paging pushdowns
+     * deliberately bypass this: a bounded page is not a full load.
+     *
+     * @param consumer forwarded to {@link #loadAll}
+     */
+    private void streamAll(@NotNull Consumer<DatabaseEntry> consumer) {
+
+        final long startedAt = System.nanoTime();
+        try {
+            this.loadAll(consumer);
+        } finally {
+            this.fullLoads.incrementAndGet();
+            this.fullLoadNanos.addAndGet(System.nanoTime() - startedAt);
+        }
+
+    }
+
+    /**
+     * A read-only snapshot of this section's cache activity since construction - the numbers
+     * that tell whether the configured {@link CacheMode} actually fits the workload: a
+     * {@link CacheMode#BOUNDED} section with a poor {@link #cacheHitRatio()} wants a larger
+     * bound or {@link CacheMode#FULL}; a {@link CacheMode#FULL} section whose
+     * {@code fullLoads}/{@code fullLoadNanos} dominate wants {@link CacheMode#LAZY} or less.
+     * <p>
+     * The hit/miss split covers {@link DatabaseSection#findEntryById} only (aggregate reads
+     * and writes have no meaningful hit notion), and under concurrent access it is
+     * approximate: concurrent misses for one id share a single backend load by design, so they
+     * count one miss however many callers piggybacked on it.
+     *
+     * @param cacheHits      point lookups answered without reading the backing store
+     * @param cacheMisses    point lookups that read the backing store
+     * @param fullLoads      whole-section {@code loadAll} passes (warm-ups, reloads,
+     *                       whole-section enumerations in the non-materialized modes)
+     * @param fullLoadNanos  cumulative wall-clock nanoseconds spent in those passes
+     */
+    public record SectionStats(long cacheHits, long cacheMisses, long fullLoads, long fullLoadNanos) {
+
+        /**
+         * The fraction of point lookups served without touching the backing store, or
+         * {@code 1.0} for a section never point-read - "no lookup was ever slow" is the honest
+         * degenerate answer, and it keeps dashboards from flagging idle sections.
+         *
+         * @return the hit ratio in {@code [0.0, 1.0]}
+         */
+        public double cacheHitRatio() {
+            final long lookups = this.cacheHits + this.cacheMisses;
+            return lookups == 0 ? 1.0 : (double) this.cacheHits / lookups;
+        }
+
+    }
+
+    /**
+     * This section's activity counters, snapshotted at the time of the call. Each counter is
+     * read individually from its live atomic, so a snapshot taken mid-operation may be off by
+     * the operation in flight - fine for the monitoring this exists for, see
+     * {@link SectionStats}.
+     *
+     * @return the current counter values
+     */
+    public final SectionStats stats() {
+
+        final long loads = this.pointLoads.get();
+        final long lookups = this.pointLookups.get();
+
+        return new SectionStats(Math.max(0, lookups - loads), loads, this.fullLoads.get(), this.fullLoadNanos.get());
+
+    }
+
+    /**
+     * Drops whatever this engine holds in memory for {@code id} - no backend call, no
+     * re-fetch. This is the eviction hook a multi-instance consumer wires to its change-feed
+     * of choice (e.g. PostgreSQL {@code LISTEN}/{@code NOTIFY}, or the Redis change channel
+     * this library's own sections publish on) so entries changed by <em>another</em> process
+     * stop being served stale; the listener infrastructure itself deliberately lives with the
+     * consumer, not here.
+     * <p>
+     * Mode caveat, worth reading before wiring: in {@link CacheMode#BOUNDED} the next read of
+     * {@code id} transparently re-fetches through the cache loader - the intended pairing. In
+     * the map-backed modes the dropped id simply reads as <em>absent</em> until the next full
+     * (re)load, because their reads never consult the backing store; for an external
+     * <em>update</em> (rather than delete) a {@link #reload()} - or {@link CacheMode#BOUNDED}
+     * in the first place - is the right tool there. {@link CacheMode#NONE} holds nothing, so
+     * this is a no-op.
+     *
+     * @param id the entry whose cached state to drop
+     */
+    public final void onExternalInvalidate(@NotNull String id) {
+
+        switch (this.config.cacheMode()) {
+
+            case FULL, LAZY -> this.entries.remove(id);
+            case BOUNDED -> this.cache.invalidate(id);
+            case NONE -> { }
+
+        }
+
     }
 
 }

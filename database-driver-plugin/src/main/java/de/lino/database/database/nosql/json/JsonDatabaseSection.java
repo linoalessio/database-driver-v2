@@ -12,12 +12,15 @@ import de.lino.database.database.DatabaseSection;
 import de.lino.database.database.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -207,6 +210,35 @@ public class JsonDatabaseSection extends AbstractCachedDatabaseSection {
     @Override
     protected void clearRemote() {
         FileProvider.getInstance().deleteAllFilesInDirectory(this.parent);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Pushed down as far as a directory store allows: the page is chosen on file
+     * <em>names</em> alone (one directory listing, sorted by id), and only the files actually
+     * inside the page window are opened and parsed - the payload cost of a page is O(limit),
+     * not O(section).
+     */
+    @Override
+    protected @UnmodifiableView List<DatabaseEntry> pageRemote(long offset, int limit) {
+
+        final File[] files = this.parent.toFile().listFiles((dir, fileName) -> fileName.endsWith(".json"));
+        if (files == null) return List.of();
+
+        final List<String> ids = new ArrayList<>(files.length);
+        for (final File file : files) ids.add(file.getName().replace(".json", ""));
+        ids.sort(null);
+
+        if (offset >= ids.size()) return List.of();
+
+        final List<DatabaseEntry> page = new ArrayList<>(limit);
+        for (final String id : ids.subList((int) offset, (int) Math.min(ids.size(), offset + limit))) {
+            page.add(this.readEntry(id, this.entryFile(id)));
+        }
+
+        return List.copyOf(page);
+
     }
 
     /**

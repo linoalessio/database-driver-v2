@@ -18,7 +18,10 @@ import de.lino.database.database.entity.DatabaseEntry;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.UnmodifiableView;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -181,6 +184,33 @@ public class RethinkDBDatabaseSection extends AbstractCachedDatabaseSection {
     @Override
     protected void clearRemote() {
         this.table.delete().runNoReply(this.connection);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Pushed down entirely, ordered by the table's primary-key <em>index</em>
+     * ({@code orderBy().optArg("index", "id")}) rather than a plain {@code orderBy("id")} -
+     * the index variant streams from the server in order, while the plain one would force
+     * RethinkDB to materialize and sort the whole table server-side (and refuse outright past
+     * its array size limit).
+     */
+    @Override
+    protected @UnmodifiableView List<DatabaseEntry> pageRemote(long offset, int limit) {
+
+        final List<DatabaseEntry> page = new ArrayList<>(limit);
+
+        try (final Result<Map<String, String>> result = this.table.orderBy().optArg("index", "id")
+                .skip(offset).limit(limit).run(this.connection, this.cache)) {
+
+            while (result.hasNext()) {
+                page.add(this.readEntry(result.next()));
+            }
+
+        }
+
+        return List.copyOf(page);
+
     }
 
     private MapObject<Object, Object> mapping(@NotNull String id) {

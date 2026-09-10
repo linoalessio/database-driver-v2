@@ -7,6 +7,7 @@ import org.jetbrains.annotations.UnmodifiableView;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * Represents a single logical grouping of {@link DatabaseEntry} objects within a
@@ -91,11 +92,61 @@ public interface DatabaseSection {
 
     /**
      * Get an unmodifiable list of all database entities.
+     * <p>
+     * The whole section is materialized as one list, whatever its size - kept that way for
+     * compatibility. A consumer working through a large section should prefer
+     * {@link #forEachEntry(Consumer)} (constant memory) or {@link #getEntries(long, int)}
+     * (one bounded page at a time) instead of holding every entry at once.
      *
      * @return an unmodifiable list of all entries currently stored in this section
      */
     @UnmodifiableView
     List<DatabaseEntry> getEntries();
+
+    /**
+     * Streams every entry of this section to {@code consumer}, one at a time, without
+     * materializing the section as a whole - the constant-memory alternative to
+     * {@link #getEntries()} for sections too large to hold in one list. No entry order is
+     * guaranteed.
+     * <p>
+     * This {@code default} implementation exists only so {@link DatabaseSection}
+     * implementations written before this method keep compiling - it simply iterates
+     * {@link #getEntries()} and therefore still materializes everything. Every section shipped
+     * by this library's plugin module overrides it with a genuinely streaming implementation.
+     *
+     * @param consumer called once per stored entry
+     */
+    default void forEachEntry(@NotNull Consumer<DatabaseEntry> consumer) {
+        this.getEntries().forEach(consumer);
+    }
+
+    /**
+     * A single page of this section's entries: the entries at positions
+     * {@code [offset, offset + limit)} of a stable, id-ordered enumeration - the same page for
+     * the same arguments as long as the data does not change, so a consumer can work through a
+     * large section chunk by chunk without ever holding more than one page.
+     * <p>
+     * This {@code default} implementation exists only so {@link DatabaseSection}
+     * implementations written before this method keep compiling - it slices
+     * {@link #getEntries()} (in that list's order) and therefore still materializes
+     * everything. Every section shipped by this library's plugin module overrides it with an
+     * implementation that pushes the paging toward the backing store instead.
+     *
+     * @param offset how many entries of the enumeration to skip; must not be negative
+     * @param limit  the most entries the page may hold; must not be negative
+     * @return the page's entries, empty once {@code offset} lies beyond the section's end
+     */
+    default @UnmodifiableView List<DatabaseEntry> getEntries(long offset, int limit) {
+
+        if (offset < 0) throw new IllegalArgumentException("@DatabaseSection.getEntries: offset must not be negative, got " + offset);
+        if (limit < 0) throw new IllegalArgumentException("@DatabaseSection.getEntries: limit must not be negative, got " + limit);
+
+        final List<DatabaseEntry> all = this.getEntries();
+        if (limit == 0 || offset >= all.size()) return List.of();
+
+        return List.copyOf(all.subList((int) offset, (int) Math.min(all.size(), offset + limit)));
+
+    }
 
     /**
      * Execute the {@link #insert(DatabaseEntry)} process async.
@@ -176,6 +227,27 @@ public interface DatabaseSection {
      */
     default CompletableFuture<List<DatabaseEntry>> getEntriesAsync() {
         return CompletableFuture.supplyAsync(this::getEntries);
+    }
+
+    /**
+     * Execute the {@link #forEachEntry(Consumer)} process async.
+     *
+     * @param consumer called once per stored entry, on the async pool's thread
+     * @return a {@link CompletableFuture} that completes once every entry has been consumed
+     */
+    default CompletableFuture<Void> forEachEntryAsync(@NotNull Consumer<DatabaseEntry> consumer) {
+        return CompletableFuture.runAsync(() -> forEachEntry(consumer));
+    }
+
+    /**
+     * Execute the {@link #getEntries(long, int)} process async.
+     *
+     * @param offset how many entries of the enumeration to skip; must not be negative
+     * @param limit  the most entries the page may hold; must not be negative
+     * @return a {@link CompletableFuture} resolving to the page's entries
+     */
+    default CompletableFuture<List<DatabaseEntry>> getEntriesAsync(long offset, int limit) {
+        return CompletableFuture.supplyAsync(() -> getEntries(offset, limit));
     }
 
     /**

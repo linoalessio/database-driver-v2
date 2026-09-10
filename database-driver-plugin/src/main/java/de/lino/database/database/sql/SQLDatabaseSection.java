@@ -11,12 +11,15 @@ import de.lino.database.database.entity.DatabaseEntry;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -34,6 +37,13 @@ public class SQLDatabaseSection extends AbstractCachedDatabaseSection {
      * every one of its sibling sections.
      */
     private final SQLExecution sqlExecution;
+
+    /**
+     * The SQL vendor this section's table lives on, kept because vendors disagree on paging
+     * syntax - {@link #pageRemote} must emit {@code LIMIT ? OFFSET ?} for one family and
+     * {@code OFFSET ? ROWS FETCH NEXT ? ROWS ONLY} for the other.
+     */
+    private final DatabaseType databaseType;
 
     /**
      * Creates (if not already present) this section's table and loads its existing rows into
@@ -67,6 +77,7 @@ public class SQLDatabaseSection extends AbstractCachedDatabaseSection {
 
         super(name, config);
         this.sqlExecution = sqlExecution;
+        this.databaseType = databaseType;
 
         String sqlStatement = "";
         switch (databaseType) {
@@ -223,6 +234,59 @@ public class SQLDatabaseSection extends AbstractCachedDatabaseSection {
     @Override
     protected void clearRemote() {
         this.sqlExecution.executeUpdate("TRUNCATE TABLE " + this.getName());
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Pushed down entirely: the server orders by id and returns only the requested window, so
+     * a page costs one bounded query no matter how large the table is. Vendors split over the
+     * paging clause - MySQL, MariaDB, PostgreSQL, SQLite and H2 take {@code LIMIT ? OFFSET ?},
+     * while Oracle, Microsoft SQL Server and Apache Derby take the SQL-standard
+     * {@code OFFSET ? ROWS FETCH NEXT ? ROWS ONLY} - which is the one reason this class still
+     * needs to know its {@link #databaseType} after construction.
+     */
+    @Override
+    protected @UnmodifiableView List<DatabaseEntry> pageRemote(long offset, int limit) {
+
+        final String query;
+        final Object[] bindings;
+
+        switch (this.databaseType) {
+
+            case ORACLE, MICROSOFT_SQL_SERVER, APACHE_DERBY -> {
+                query = "SELECT * FROM " + this.getName() + " ORDER BY id OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+                bindings = new Object[]{offset, limit};
+            }
+            default -> {
+                query = "SELECT * FROM " + this.getName() + " ORDER BY id LIMIT ? OFFSET ?";
+                bindings = new Object[]{limit, offset};
+            }
+
+        }
+
+        final List<DatabaseEntry> page = new ArrayList<>(limit);
+
+        this.sqlExecution.executeQuery(query, resultSet -> {
+
+            try {
+
+                while (resultSet.next()) {
+
+                    final DatabaseEntry databaseEntry = this.readEntry(resultSet.getString("id"), resultSet);
+                    if (databaseEntry != null) page.add(databaseEntry);
+
+                }
+
+            } catch (final SQLException exception) {
+                exception.printStackTrace();
+            }
+
+            return true;
+        }, true, bindings);
+
+        return List.copyOf(page);
+
     }
 
 }

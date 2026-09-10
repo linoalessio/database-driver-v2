@@ -4,6 +4,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
+import com.mongodb.client.model.Sorts;
 import de.lino.database.database.AbstractCachedDatabaseSection;
 import de.lino.database.database.CacheMode;
 import de.lino.database.database.SectionConfig;
@@ -14,7 +15,10 @@ import de.lino.database.database.entity.DatabaseEntry;
 import lombok.Getter;
 import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.UnmodifiableView;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -151,6 +155,27 @@ public class MongoDBDatabaseSection extends AbstractCachedDatabaseSection {
     @Override
     protected void clearRemote() {
         this.collection.deleteMany(new Document());
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Pushed down entirely: the server sorts by {@code id}, skips and limits, so a page costs
+     * one bounded query no matter how large the collection is. MongoDB's {@code skip} takes an
+     * {@code int}, so an offset beyond {@link Integer#MAX_VALUE} - far past any real
+     * collection - is rejected rather than silently truncated.
+     */
+    @Override
+    protected @UnmodifiableView List<DatabaseEntry> pageRemote(long offset, int limit) {
+
+        final List<DatabaseEntry> page = new ArrayList<>(limit);
+
+        for (Document document : this.collection.find().sort(Sorts.ascending("id")).skip(Math.toIntExact(offset)).limit(limit)) {
+            page.add(this.readEntry(document));
+        }
+
+        return List.copyOf(page);
+
     }
 
 }
