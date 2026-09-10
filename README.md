@@ -1,7 +1,7 @@
 # DatabaseDriver
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Maven](https://img.shields.io/badge/Build-Maven-C71A36)
-![Version](https://img.shields.io/badge/Version-1.3.14-blue)
+![Version](https://img.shields.io/badge/Version-1.3.15-blue)
 
 `database-driver-v2` is a management system for multiple SQL and NoSQL database types,
 controlled through a single, unified Java interface. Instead of learning a separate API for
@@ -281,7 +281,7 @@ git clone https://github.com/linoalessio/database-driver-v2.git
 ```
 
 Or add it as a Maven dependency (replace `%version%` with the version you want to use, currently
-`1.3.14`). `database-driver-api` gives you the interfaces to code against; `database-driver-plugin`
+`1.3.15`). `database-driver-api` gives you the interfaces to code against; `database-driver-plugin`
 provides the actual implementations and must be present on the runtime classpath. The artifacts
 are published to **GitHub Packages**, not Maven Central, so two extra steps are required before
 the dependencies below will resolve.
