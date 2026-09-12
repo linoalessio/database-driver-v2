@@ -52,6 +52,23 @@ public class SQLDatabaseProvider extends AbstractLazyDatabaseProvider {
 
     }
 
+    /**
+     * The connection pool this database runs every query and update through - exposed (since
+     * 1.3.16) as the deliberate raw-SQL escape hatch for a consumer feature that genuinely
+     * cannot be expressed over {@link de.lino.database.database.DatabaseSection}'s
+     * key/value surface (the motivating case: a Postgres {@code tsvector}/GIN full-text search
+     * index, which needs vendor-specific column types and index DDL no generic section can
+     * carry). Callers share this pool with every section of this database: never call
+     * {@link SQLExecution#shutdown()} on it - the provider owns its lifecycle - and keep
+     * statements short-lived so section traffic is never starved of pooled connections.
+     *
+     * @return the shared connection pool
+     */
+    @NotNull
+    public SQLExecution getSqlExecution() {
+        return this.sqlExecution;
+    }
+
     @Override
     public void shutdown() {
         this.sqlExecution.shutdown();
