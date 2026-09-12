@@ -1,7 +1,7 @@
 # DatabaseDriver
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Maven](https://img.shields.io/badge/Build-Maven-C71A36)
-![Version](https://img.shields.io/badge/Version-1.3.15-blue)
+![Version](https://img.shields.io/badge/Version-1.3.16-blue)
 
 `database-driver-v2` is a management system for multiple SQL and NoSQL database types,
 controlled through a single, unified Java interface. Instead of learning a separate API for
