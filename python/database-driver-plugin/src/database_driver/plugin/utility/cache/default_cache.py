@@ -7,7 +7,7 @@ import concurrent.futures
 import threading
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Generic, TypeVar
 
 from database_driver.api.utils.cache.cache import Cache
@@ -31,7 +31,7 @@ class _Entry(Generic[T]):
         self.last_access_nanos = time.monotonic_ns()
 
     def is_expired(self) -> bool:
-        return self.expires_at is not None and datetime.now(timezone.utc) > self.expires_at
+        return self.expires_at is not None and datetime.now(UTC) > self.expires_at
 
     def is_failed_or_expired(self) -> bool:
         if not self.future.done():
@@ -110,7 +110,7 @@ class DefaultCache(Cache[ID, T]):
                 if value is None:
                     raise TypeError("loader must not return None values")
                 entry.future.set_result(value)
-            except BaseException as failure:  # noqa: BLE001 - the failure belongs to every waiter
+            except BaseException as failure:
                 entry.future.set_exception(failure)
 
         self._maybe_evict_over_capacity()
@@ -159,7 +159,7 @@ class DefaultCache(Cache[ID, T]):
         return result
 
     def _expiry(self) -> datetime | None:
-        return None if self._ttl is None else datetime.now(timezone.utc) + self._ttl
+        return None if self._ttl is None else datetime.now(UTC) + self._ttl
 
     def _maybe_evict_over_capacity(self) -> None:
         """Approximate-LRU eviction once ``max_size`` is exceeded: draws a constant

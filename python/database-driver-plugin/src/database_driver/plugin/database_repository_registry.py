@@ -6,7 +6,7 @@ import asyncio
 import threading
 import traceback
 import weakref
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
 
 from database_driver.api.database.auth.credentials import Credentials
 from database_driver.api.database.database_provider import DatabaseProvider
@@ -15,6 +15,7 @@ from database_driver.api.database_repository import DatabaseRepository
 from database_driver.api.json.json_document import JsonDocument
 from database_driver.api.utils.cache.cache import Cache
 from database_driver.api.utils.pair import Pair
+
 from database_driver.plugin.database.file.default_file_provider import DefaultFileProvider
 
 
@@ -54,8 +55,8 @@ class DatabaseRepositoryRegistry(DatabaseRepository):
     # TTL-configured cache appears - a process that never configures a TTL never pays for
     # the thread - and stopped again by shutdown()/shutdown_async(). Daemon so a consumer
     # that forgets to shut the repository down is not kept alive by cache housekeeping.
-    _ttl_sweeper: ClassVar[Optional[threading.Thread]] = None
-    _ttl_sweeper_stop: ClassVar[Optional[threading.Event]] = None
+    _ttl_sweeper: ClassVar[threading.Thread | None] = None
+    _ttl_sweeper_stop: ClassVar[threading.Event | None] = None
     _SWEEPER_LOCK: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(self, log_bytes: bool = False) -> None:
@@ -185,11 +186,15 @@ class DatabaseRepositoryRegistry(DatabaseRepository):
     def convert(self, source_id: int, target_id: int) -> Pair[DatabaseProvider, DatabaseProvider]:
         source_pair = self._database_providers.get(source_id)
         if source_pair is None:
-            raise RuntimeError(f"@DatabaseRepositoryRegistry.convert: Database Provider with id #{source_id} does not exist")
+            raise RuntimeError(
+                f"@DatabaseRepositoryRegistry.convert: Database Provider with id #{source_id} does not exist"
+            )
 
         target_pair = self._database_providers.get(target_id)
         if target_pair is None:
-            raise RuntimeError(f"@DatabaseRepositoryRegistry.convert: Database Provider with id #{target_id} does not exist")
+            raise RuntimeError(
+                f"@DatabaseRepositoryRegistry.convert: Database Provider with id #{target_id} does not exist"
+            )
 
         source_type = source_pair.first
         source = source_pair.second
@@ -212,7 +217,7 @@ class DatabaseRepositoryRegistry(DatabaseRepository):
 
         return Pair(source, destination)
 
-    def find_database_provider_by_id(self, id: int) -> Optional[DatabaseProvider]:
+    def find_database_provider_by_id(self, id: int) -> DatabaseProvider | None:
         pair = self._database_providers.get(id)
         return None if pair is None else pair.second
 
@@ -221,7 +226,9 @@ class DatabaseRepositoryRegistry(DatabaseRepository):
     ) -> DatabaseProvider:
         with self._providers_lock:
             if id in self._database_providers:
-                raise RuntimeError(f"@DatabaseRepositoryRegistry.register_database_provider: Provider with id #{id} already exists")
+                raise RuntimeError(
+                    f"@DatabaseRepositoryRegistry.register_database_provider: Provider with id #{id} already exists"
+                )
             pair = Pair(database_type, _create_provider(database_type, credentials))
             self._database_providers[id] = pair
         return pair.second
@@ -230,7 +237,10 @@ class DatabaseRepositoryRegistry(DatabaseRepository):
         with self._providers_lock:
             pair = self._database_providers.pop(id, None)
         if pair is None:
-            raise RuntimeError(f"@DatabaseRepositoryRegistry.unregister_database_provider: Database Provider with id #{id} does not exist")
+            raise RuntimeError(
+                f"@DatabaseRepositoryRegistry.unregister_database_provider: "
+                f"Database Provider with id #{id} does not exist"
+            )
         unregistered = pair.second
         unregistered.shutdown()
         return unregistered
@@ -278,7 +288,7 @@ def _create_provider(database_type: DatabaseType, credentials: Credentials) -> D
             ApacheDerbyDatabaseProvider,
         )
 
-        return ApacheDerbyDatabaseProvider(credentials)
+        return ApacheDerbyDatabaseProvider(credentials)  # type: ignore[return-value]  # always raises
     if database_type is DatabaseType.SQLITE:
         from database_driver.plugin.database.sql.sqlite.sqlite_database_provider import SQLiteDatabaseProvider
 
@@ -286,7 +296,7 @@ def _create_provider(database_type: DatabaseType, credentials: Credentials) -> D
     if database_type is DatabaseType.H2_DB:
         from database_driver.plugin.database.sql.h2db.h2_database_provider import H2DatabaseProvider
 
-        return H2DatabaseProvider(credentials)
+        return H2DatabaseProvider(credentials)  # type: ignore[return-value]  # always raises
     if database_type is DatabaseType.MONGO_DB:
         from database_driver.plugin.database.nosql.mongodb.mongodb_database_provider import (
             MongoDBDatabaseProvider,

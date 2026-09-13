@@ -68,7 +68,11 @@ class DefaultConsistentHashRing(ConsistentHashRing[NodeId]):
         if node is None:
             raise TypeError("node must not be None")
         with self._lock:
-            keep = [(position, owner) for position, owner in zip(self._hashes, self._nodes) if owner != node]
+            keep = [
+                (position, owner)
+                for position, owner in zip(self._hashes, self._nodes, strict=True)
+                if owner != node
+            ]
             self._hashes = [position for position, _ in keep]
             self._nodes = [owner for _, owner in keep]
 

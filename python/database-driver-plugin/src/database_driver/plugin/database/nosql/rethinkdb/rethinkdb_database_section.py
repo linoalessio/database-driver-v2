@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from database_driver.api.database.entity.database_entry import DatabaseEntry
 from database_driver.api.database.exception.no_such_data_found import NoSuchDataFound
 from database_driver.api.database.section_config import SectionConfig
 from database_driver.api.json.json_document import JsonDocument
+
 from database_driver.plugin.database.abstract_cached_database_section import AbstractCachedDatabaseSection
 
 
@@ -45,13 +46,13 @@ class RethinkDBDatabaseSection(AbstractCachedDatabaseSection):
         finally:
             cursor.close()
 
-    def fetch_one(self, id: str) -> Optional[DatabaseEntry]:
+    def fetch_one(self, id: str) -> DatabaseEntry | None:
         """A primary-key ``get`` - RethinkDB's native point read, keyed on the same
         ``id`` field every write here stores."""
         content = self._point_read(id)
         return None if content is None else _read_entry(content)
 
-    def _point_read(self, id: str) -> Optional[dict[str, Any]]:
+    def _point_read(self, id: str) -> dict[str, Any] | None:
         """Runs the primary-key ``get`` shared by ``fetch_one`` and ``exists_remote``,
         unwrapping RethinkDB's "single atom, possibly null" result shape once."""
         return self.table.get(id).run(self.connection)
@@ -102,7 +103,7 @@ def _read_entry(content: dict[str, Any]) -> DatabaseEntry:
             rows load at all.
     """
     if "data" not in content:
-        raise NoSuchDataFound(content.get("id"))
+        raise NoSuchDataFound(str(content.get("id")))
     return DatabaseEntry(content["id"], JsonDocument(content["values"]))
 
 

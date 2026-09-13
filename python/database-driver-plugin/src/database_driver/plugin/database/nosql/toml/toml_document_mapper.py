@@ -7,7 +7,6 @@ import tomllib
 from typing import Any
 
 import tomli_w
-
 from database_driver.api.json.json_document import JsonDocument
 
 

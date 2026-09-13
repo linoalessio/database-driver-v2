@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import traceback
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from database_driver.api.database.database_type import DatabaseType
 from database_driver.api.database.entity.database_entry import DatabaseEntry
 from database_driver.api.database.exception.no_such_data_found import NoSuchDataFound
 from database_driver.api.database.section_config import SectionConfig
 from database_driver.api.json.json_document import JsonDocument
+
 from database_driver.plugin.database.abstract_cached_database_section import AbstractCachedDatabaseSection
 from database_driver.plugin.database.sql.sql_execution import SQLExecution
 
@@ -81,13 +82,13 @@ class SQLDatabaseSection(AbstractCachedDatabaseSection):
             f"SELECT id, data FROM {self.get_name()}", _RELOAD_FETCH_SIZE, stream, True
         )
 
-    def fetch_one(self, id: str) -> Optional[DatabaseEntry]:
+    def fetch_one(self, id: str) -> DatabaseEntry | None:
         """A single indexed-lookup-shaped ``SELECT ... WHERE id = ?``. A row whose
         ``data`` column is unexpectedly ``NULL`` surfaces as absent rather than raising,
         because ``execute_query``'s error handling maps any failure inside the row mapper
         to the default value."""
 
-        def first(cursor: Any) -> Optional[DatabaseEntry]:
+        def first(cursor: Any) -> DatabaseEntry | None:
             row = cursor.fetchone()
             if row is None:
                 return None
@@ -167,7 +168,7 @@ class SQLDatabaseSection(AbstractCachedDatabaseSection):
         await asyncio.to_thread(self.clear)
 
 
-def _read_entry(id: str, data: Any) -> Optional[DatabaseEntry]:
+def _read_entry(id: str, data: Any) -> DatabaseEntry | None:
     """Parses one row into a ``DatabaseEntry``, the one row shape (``data`` BLOB holding
     the serialized ``JsonDocument``) every query here shares.
 

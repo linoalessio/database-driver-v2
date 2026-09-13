@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "lino-database-driver-plugin"
 version = "0.1.0"
 description = "The concrete providers, caches and export coordinator behind lino-database-driver-api - the Python mirror of de.lino.database:database-driver-plugin."
-readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [{ name = "Lino Alessio Kauschinger" }]

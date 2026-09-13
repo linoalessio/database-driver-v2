@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from database_driver.api.database.auth.credentials import Credentials
 from database_driver.api.database.notification.redis_counter_service import RedisCounterService
 from database_driver.api.database.section_config import SectionConfig
+
 from database_driver.plugin.database.abstract_cached_database_section import AbstractCachedDatabaseSection
 from database_driver.plugin.database.abstract_lazy_database_provider import AbstractLazyDatabaseProvider
 from database_driver.plugin.database.nosql.redis.redis_database_section import RedisDatabaseSection
@@ -53,7 +54,7 @@ class RedisDatabaseProvider(AbstractLazyDatabaseProvider):
 
         # Lazily constructed by counter_service(); double-checked so concurrent
         # first-callers all end up sharing the exact same instance, not one each.
-        self._counter_service: Optional[RedisCounterService] = None
+        self._counter_service: RedisCounterService | None = None
         self._counter_lock = threading.Lock()
 
         self.reload()

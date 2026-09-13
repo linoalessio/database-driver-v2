@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import traceback
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from database_driver.api.database.auth.credentials import Credentials
 from database_driver.api.database.entity.serialized import Serialized
@@ -70,7 +70,7 @@ class RedisDatabaseNotification(DatabaseNotification):
         self._subscriber_connection: Any = None
         self._pubsub: Any = None
         self._running = False
-        self._listener_thread: Optional[threading.Thread] = None
+        self._listener_thread: threading.Thread | None = None
 
     def watch(self, *types: type[Serialized]) -> None:
         """A documented no-op - see the class docstring for why. Redis has no trigger

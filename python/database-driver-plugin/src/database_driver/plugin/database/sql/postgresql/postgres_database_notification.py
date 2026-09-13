@@ -6,13 +6,14 @@ import re
 import threading
 import traceback
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from database_driver.api.database.auth.credentials import Credentials
 from database_driver.api.database.database_type import DatabaseType
 from database_driver.api.database.entity.serialized import Serialized
 from database_driver.api.database.notification.database_notification import DatabaseNotification
 from database_driver.api.json.json_document import JsonDocument
+
 from database_driver.plugin.database.sql.sql_execution import SQLExecution
 
 _SAFE_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -81,7 +82,7 @@ class PostgresDatabaseNotification(DatabaseNotification):
         self._lifecycle_lock = threading.Lock()
         self._listen_connection: Any = None
         self._running = False
-        self._listener_thread: Optional[threading.Thread] = None
+        self._listener_thread: threading.Thread | None = None
 
     def watch(self, *types: type[Serialized]) -> None:
         """Installs an idempotent ``AFTER INSERT OR UPDATE`` trigger on each given entity
@@ -101,7 +102,8 @@ class PostgresDatabaseNotification(DatabaseNotification):
         create_function = f"""
             CREATE OR REPLACE FUNCTION {function}() RETURNS trigger AS $body$
             BEGIN
-                PERFORM pg_notify('{self._channel}', json_build_object('table', TG_TABLE_NAME, 'operation', TG_OP, 'id', NEW.id)::text);
+                PERFORM pg_notify('{self._channel}',
+                    json_build_object('table', TG_TABLE_NAME, 'operation', TG_OP, 'id', NEW.id)::text);
                 RETURN NEW;
             END;
             $body$ LANGUAGE plpgsql;
@@ -148,7 +150,8 @@ class PostgresDatabaseNotification(DatabaseNotification):
                 self._listen_connection.execute(f"LISTEN {self._channel};")
             except Exception as failure:
                 raise RuntimeError(
-                    f"@PostgresDatabaseNotification.start: failed to open the LISTEN connection on channel '{self._channel}'"
+                    "@PostgresDatabaseNotification.start: failed to open the LISTEN connection "
+                    f"on channel '{self._channel}'"
                 ) from failure
 
             self._running = True

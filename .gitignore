@@ -3,6 +3,10 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Secrets/Architecture ###
+architecture/*.md
+architecture
+
 ### IntelliJ IDEA ###
 .idea/
 .idea/*.xml
@@ -41,6 +45,7 @@ release-and-package.sh
 
 ### AI ###
 CLAUDE.md
+
 ### Python (python/ mirror) ###
 __pycache__/
 *.pyc

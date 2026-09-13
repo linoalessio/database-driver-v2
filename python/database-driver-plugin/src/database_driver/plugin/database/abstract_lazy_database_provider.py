@@ -5,11 +5,11 @@ from __future__ import annotations
 import threading
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import Optional
 
 from database_driver.api.database.database_provider import DatabaseProvider
 from database_driver.api.database.database_section import DatabaseSection
 from database_driver.api.database.section_config import SectionConfig
+
 from database_driver.plugin.database.abstract_cached_database_section import AbstractCachedDatabaseSection
 
 
@@ -138,7 +138,7 @@ class AbstractLazyDatabaseProvider(DatabaseProvider):
             self._materialize(name)
         return list(self._sections.values())
 
-    def get_section(self, name: str) -> Optional[DatabaseSection]:
+    def get_section(self, name: str) -> DatabaseSection | None:
         existing = self._sections.get(name)
         if existing is not None:
             return existing

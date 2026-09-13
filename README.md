@@ -1,6 +1,7 @@
 # DatabaseDriver
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Maven](https://img.shields.io/badge/Build-Maven-C71A36)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
 ![Version](https://img.shields.io/badge/Version-1.3.16-blue)
 
 `database-driver-v2` is a management system for multiple SQL and NoSQL database types,
@@ -11,6 +12,15 @@ MySQL, MongoDB, Redis or a plain directory of JSON, TOML or CSV files. Every ope
 available in a non-blocking, `CompletableFuture`-based variant, and every section's memory
 footprint is configurable per section — from "everything cached in memory" down to "nothing at
 all".
+
+The library ships in **two editions with one contract**: the original Java modules
+(`database-driver-api` / `database-driver-plugin`, Maven artifacts under `de.lino.database`)
+and a class-for-class **Python mirror** under [`python/`](python/)
+(`lino-database-driver-api` / `lino-database-driver-plugin`, importing as
+`database_driver.api` / `database_driver.plugin`). Persisted data — entry documents,
+`Credentials` config files, the file stores' on-disk layout — is byte-compatible between the
+two, so the same repository can be read from Java and Python. See
+[Python Edition](#python-edition).
 
 This README is the map of the project: what it does, how it is built, and how every public
 surface is used.
@@ -40,6 +50,7 @@ surface is used.
 - [Export: `ExportCoordinator`](#export-exportcoordinator)
 - [Caching: `Cache` / `ClusteredCache`](#caching-cache--clusteredcache)
 - [Push Notifications: `DatabaseNotification`](#push-notifications-databasenotification)
+- [Python Edition](#python-edition)
 - [Development](#development)
 - [Testing](#testing)
 - [Known Limitations](#known-limitations)
@@ -201,6 +212,8 @@ every call straight to the backend.
 |---|---|---|
 | `database-driver-api` | `database-driver-api` | The public API: `DatabaseRepository`, `DatabaseProvider`, `DatabaseSection`, `DatabaseEntry`, `Credentials`, the per-section cache configuration (`SectionConfig`/`CacheMode`), the JSON document model (`JsonDocument`), the driver's exceptions, the `Cache`/`ClusteredCache` contracts, the export contracts, and the `DatabaseNotification` push-notification contract |
 | `database-driver-plugin` | `database-driver-plugin` | The concrete implementation: `DatabaseRepositoryRegistry`, the shared section caching engine (`AbstractCachedDatabaseSection`) and lazy section discovery (`AbstractLazyDatabaseProvider`), one `DatabaseProvider`/`DatabaseSection` pair per supported backend, the default `Cache`/`ClusteredCache` implementations (ServiceLoader-registered), `ExportCoordinator`, and `PostgresDatabaseNotification` |
+| `python/database-driver-api` | `lino-database-driver-api` (PyPI-style) | The Python mirror of `-api`: the same contracts as abstract base classes / `Protocol`s, `JsonDocument`, `Credentials`, `SectionConfig`/`CacheMode` — zero runtime dependencies, importing as `database_driver.api` |
+| `python/database-driver-plugin` | `lino-database-driver-plugin` (PyPI-style) | The Python mirror of `-plugin`: the same registry, caching engine, backends (drivers as opt-in extras), caches (entry-point-registered) and `ExportCoordinator`, importing as `database_driver.plugin` |
 
 ## Project Structure
 
@@ -226,7 +239,16 @@ database-driver-v2/
 │       │   └── nosql/                            # mongodb/ rethinkdb/ redis/ json/ toml/ csv/
 │       └── utility/                              # DefaultCache, ExportCoordinator, ...
 │   └── src/test/java/                            # JUnit 5 suite (engine, modes, paging, TOML)
-├── .github/workflows/                            # CI (build+test) and release publishing
+├── python/                                       # the Python mirror (same package layout)
+│   ├── database-driver-api/
+│   │   ├── src/database_driver/api/              # contracts: database/, json/, utils/ — one
+│   │   │                                         #   module per Java class, same package paths
+│   │   └── tests/                                # pytest suite (contracts, JsonDocument, Credentials)
+│   └── database-driver-plugin/
+│       ├── src/database_driver/plugin/           # registry, engine, database/sql/ + nosql/,
+│       │                                         #   utility/cache/ + export/
+│       └── tests/                                # pytest suite (engine modes, SQLite, stores, exports)
+├── .github/workflows/                            # CI (Java + Python) and release publishing
 ├── release-and-package.sh                        # version bump + tag + GitHub release, run manually
 └── pom.xml                                       # Maven reactor root
 ```
@@ -271,6 +293,7 @@ database-driver-v2/
 | Maven 3.x | No wrapper is committed — use a local install |
 | GitHub Packages read access | The artifacts are published to GitHub Packages, not Maven Central — a PAT with `read:packages` must be configured in `~/.m2/settings.xml` under server id `github` (see [Installation](#installation)) |
 | A database server (optional) | Only for the network backends you actually use; SQLite, H2 and the JSON/TOML/CSV stores run without any server |
+| Python **3.11+** (Python edition only) | For the mirror under `python/`; the Java toolchain is not needed to use it, and vice versa |
 
 ## Installation
 
@@ -337,6 +360,23 @@ export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx   # the token you generated above
     <version>%version%</version>
   </dependency>
 </dependencies>
+```
+
+### Python edition
+
+The Python packages are not published to a package index yet — install them from the
+repository (the plugin depends on the api package, so install both):
+
+```bash
+git clone https://github.com/linoalessio/database-driver-v2.git
+pip install ./database-driver-v2/python/database-driver-api
+pip install ./database-driver-v2/python/database-driver-plugin
+
+# network backends and office-format exporters are opt-in extras:
+pip install "./database-driver-v2/python/database-driver-plugin[postgres]"   # or mysql, mssql,
+                                                                             # oracle, mongodb,
+                                                                             # redis, rethinkdb,
+pip install "./database-driver-v2/python/database-driver-plugin[export]"     # export, all
 ```
 
 ## Quick Start
@@ -845,6 +885,60 @@ there with any Redis client and reuse the same payload handling. Pair either fee
 section's `onExternalInvalidate(id)` hook (see
 [Per-section cache modes](#per-section-cache-modes)) to evict entries another process changed.
 
+## Python Edition
+
+The [`python/`](python/) directory holds a class-for-class mirror of both Maven modules: every
+Java class maps to one Python module at the identical package path
+(`de.lino.database.database.sql.SQLDatabaseSection` →
+`database_driver.plugin.database.sql.sql_database_section`), and the two distributions share
+one PEP 420 namespace root the way the two Maven artifacts share `de.lino.database`:
+
+```python
+from database_driver.api import DatabaseRepository, DatabaseType, Credentials, JsonDocument
+from database_driver.plugin import DatabaseRepositoryRegistry
+
+from pathlib import Path
+
+DatabaseRepositoryRegistry(log_bytes=False)
+
+credentials = Credentials(Path("config/database.json"), file_repository=Path("data"))
+provider = DatabaseRepository.get_instance().register_database_provider(1, DatabaseType.JSON, credentials)
+
+players = provider.create_section("players")
+```
+
+The contract is the Java one, translated at the language boundary and nowhere else:
+
+- **Sync + async, mirrored.** Every operation has a `*_async` coroutine counterpart
+  (`insert`/`insert_async`, …). The default async methods offload via `asyncio.to_thread`,
+  exactly as the Java defaults offload to the `CompletableFuture` common pool.
+- **Same engine, same semantics.** `AbstractCachedDatabaseSection` (all four cache modes,
+  stats, TTL sweeps, `on_external_invalidate`) and `AbstractLazyDatabaseProvider` (name-only
+  discovery) are line-for-line ports; the pagination, streaming and exception contracts are
+  identical.
+- **`ServiceLoader` → entry points.** The plugin registers its `DefaultCacheProvider` under
+  the `database_driver.cache_provider` entry-point group; the api package's `Caches`
+  discovers it automatically.
+- **Drivers as extras.** Unlike the Java plugin, which bundles every driver jar, each network
+  backend is an opt-in pip extra (`postgres`, `mysql`, `mssql`, `oracle`, `mongodb`, `redis`,
+  `rethinkdb`) with lazy imports; the file stores, SQLite, both caches and the stdlib
+  exporters (CSV/XML/JSON + zip) work with no extra at all. `export` adds the PDF/XLSX/DOCX
+  transcript exporters (reportlab, openpyxl, python-docx).
+
+Deliberate deviations from the Java edition, all documented in the code:
+
+| Deviation | Why |
+|---|---|
+| `H2_DB` / `APACHE_DERBY` raise `NotImplementedError` | Both are embedded **JVM** databases — a Java library, not a wire protocol; no Python driver can exist. SQLite covers the embedded use case |
+| SQLite `clear()` issues `DELETE FROM` | SQLite has no `TRUNCATE`; the Java edition's unconditional `TRUNCATE` fails silently there, leaving the rows in place |
+| PostgreSQL/MySQL table discovery queries fixed | Lowercase `'public'` and `DATABASE()` respectively — the Java patterns return empty on those vendors |
+| Redis counter service named `RedisPyCounterService` | The Java name (`JedisRedisCounterService`) encodes its client; this edition's client is redis-py |
+
+The Python packages version independently of the Java modules (starting at `0.1.0`;
+`1.0.0` when the mirror is complete) and are exercised by their own CI matrix
+([`python.yml`](.github/workflows/python.yml): ruff, mypy, pytest on Python 3.11–3.13),
+path-filtered so a commit touching one edition never builds the other.
+
 ## Development
 
 ```bash
@@ -853,6 +947,13 @@ export JAVA_HOME="$(/usr/libexec/java_home -v 21)"   # JDK 21 is mandatory (macO
 mvn clean verify                                     # full build + tests, both modules
 mvn -pl database-driver-api,database-driver-plugin -am compile    # compile only
 mvn -pl database-driver-plugin -am install -DskipTests            # install locally for a consumer project
+```
+
+Python edition (each package under `python/` is its own project):
+
+```bash
+cd python/database-driver-api    && pip install -e .[dev] && ruff check src tests && mypy && pytest
+cd python/database-driver-plugin && pip install -e .[dev] && ruff check src tests && mypy && pytest
 ```
 
 - Dependency direction (`api ← plugin`) is a hard rule; `database-driver-api` carries no
@@ -872,9 +973,15 @@ mvn -pl database-driver-plugin -am install -DskipTests            # install loca
   end to end — against the JSON file store (where the backing store is directly observable)
   and SQLite (the SQL path, including the native paging pushdown).
 - `mvn verify` runs the suite; CI runs it on every push and pull request.
+- The **Python mirror carries its own pytest suites** (82 tests across both packages),
+  porting the Java suite's semantics — every cache mode against the JSON store and SQLite,
+  lazy discovery, streaming/paging, stats/invalidation, the TOML store — plus coverage the
+  Java module lacks: the cache implementations (stampede protection, TTL, approximate LRU,
+  the consistent-hash ring), the registry, and all six transcript export formats. CI runs
+  them with ruff and mypy on Python 3.11–3.13.
 - The network backends (MySQL/MariaDB/PostgreSQL/Oracle/SQL Server, MongoDB, RethinkDB, Redis)
-  have **no automated integration tests** — they share the tested engine, but their storage
-  primitives are verified against real servers manually.
+  have **no automated integration tests** in either edition — they share the tested engine,
+  but their storage primitives are verified against real servers manually.
 
 ## Known Limitations
 
@@ -891,7 +998,10 @@ mvn -pl database-driver-plugin -am install -DskipTests            # install loca
 - Section `stats()` hit/miss numbers are approximate under heavy concurrency (stampeded misses
   count once) — they are monitoring signals, not an audit trail.
 - `clear()` on SQLite issues `TRUNCATE TABLE`, which SQLite does not support — the in-memory
-  view empties but the rows survive a `reload()`. Long-standing behavior, preserved as-is.
+  view empties but the rows survive a `reload()`. Long-standing behavior, preserved as-is in
+  the Java edition; the Python edition issues `DELETE FROM` instead and genuinely clears.
+- The Python edition cannot support H2 or Apache Derby (embedded JVM databases with no wire
+  protocol); registering either `DatabaseType` there raises `NotImplementedError`.
 - The RethinkDB backend carries known pre-existing defects (its row parser checks a `data` key
   that its own writer never stores, and its update statement is not row-scoped) — preserved
   bit-for-bit through the engine refactor rather than silently changed; treat the backend as

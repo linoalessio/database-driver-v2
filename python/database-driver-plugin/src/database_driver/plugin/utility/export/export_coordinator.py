@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, ClassVar
 
 from database_driver.api.utils.export.archiv.archive_exporter import ArchiveExporter
 from database_driver.api.utils.export.data.data_exporter import DataExporter
@@ -58,8 +58,8 @@ class ExportCoordinator(ExporterInjector):
     """
 
     def __init__(self) -> None:
-        self._data_exporter: Optional[DataExporter] = None
-        self._archive_exporter: Optional[ArchiveExporter] = None
+        self._data_exporter: DataExporter | None = None
+        self._archive_exporter: ArchiveExporter | None = None
 
     def inject_data_exporter(self, data_exporter: DataExporter) -> None:
         if data_exporter is None:
@@ -309,7 +309,9 @@ class _TranscriptPDFExporter:
         page_layout: PageLayout,
         output: Path,
     ) -> None:
-        _validate(document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptPDFExporter")
+        _validate(
+            document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptPDFExporter"
+        )
 
         from reportlab.lib.colors import Color
         from reportlab.pdfgen import canvas as pdf_canvas
@@ -376,7 +378,9 @@ class _TranscriptPDFExporter:
                 continue
 
             height = cls._line_height(line)
-            would_orphan_heading = isinstance(line, _SectionHeading) and used + height + cls._ROW_HEIGHT > available_height
+            would_orphan_heading = (
+                isinstance(line, _SectionHeading) and used + height + cls._ROW_HEIGHT > available_height
+            )
 
             if used + height > available_height or would_orphan_heading:
                 pages.append(current)
@@ -518,7 +522,9 @@ class _TranscriptPDFExporter:
 
         canvas.setFillColor(self._black)
         baseline = banner_bottom + (self._BANNER_HEIGHT - self._TITLE_FONT_SIZE) / 2 + self._TITLE_FONT_SIZE * 0.2
-        self._write_text(canvas, self._FONT_BOLD, self._TITLE_FONT_SIZE, self._MARGIN + self._CELL_PADDING_X * 2, baseline, title)
+        self._write_text(
+            canvas, self._FONT_BOLD, self._TITLE_FONT_SIZE, self._MARGIN + self._CELL_PADDING_X * 2, baseline, title
+        )
 
         page_label = f"Page {page_number} of {total_pages}"
         page_label_width = self._text_width(self._FONT_BOLD, self._HEADER_FONT_SIZE, page_label)
@@ -547,7 +553,9 @@ class _TranscriptPDFExporter:
             text = self._truncate_to_width(
                 self._FONT_BOLD, self._HEADER_FONT_SIZE, header, column_widths[index] - self._CELL_PADDING_X * 2
             )
-            self._write_text(canvas, self._FONT_BOLD, self._HEADER_FONT_SIZE, x + self._CELL_PADDING_X, row_bottom + 5, text)
+            self._write_text(
+                canvas, self._FONT_BOLD, self._HEADER_FONT_SIZE, x + self._CELL_PADDING_X, row_bottom + 5, text
+            )
             x += column_widths[index]
 
         return row_bottom
@@ -566,7 +574,9 @@ class _TranscriptPDFExporter:
         canvas.setLineWidth(self._BORDER_WIDTH)
         canvas.rect(self._MARGIN, row_bottom, table_width, self._ROW_HEIGHT, stroke=1, fill=0)
 
-        self._write_text(canvas, self._FONT_BOLD, self._SECTION_FONT_SIZE, self._MARGIN + self._CELL_PADDING_X, row_bottom + 5, title)
+        self._write_text(
+            canvas, self._FONT_BOLD, self._SECTION_FONT_SIZE, self._MARGIN + self._CELL_PADDING_X, row_bottom + 5, title
+        )
 
         return row_bottom
 
@@ -661,7 +671,7 @@ class _TranscriptExcelExporter:
     _BAND_FILL = "F7F7F7"
 
     # ECMA-376 paper size codes, the same constants POI's PrintSetup wraps.
-    _PAPER_SIZES: dict[PageFormat, int] = {PageFormat.A3: 8, PageFormat.A4: 9, PageFormat.A5: 11}
+    _PAPER_SIZES: ClassVar[dict[PageFormat, int]] = {PageFormat.A3: 8, PageFormat.A4: 9, PageFormat.A5: 11}
 
     def export(
         self,
@@ -673,7 +683,9 @@ class _TranscriptExcelExporter:
         page_layout: PageLayout,
         output: Path,
     ) -> None:
-        _validate(document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptExcelExporter")
+        _validate(
+            document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptExcelExporter"
+        )
 
         from openpyxl import Workbook
 
@@ -832,7 +844,9 @@ class _TranscriptCSVExporter:
         page_layout: PageLayout,
         output: Path,
     ) -> None:
-        _validate(document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptCSVExporter")
+        _validate(
+            document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptCSVExporter"
+        )
 
         output_path = _prepare(output)
 
@@ -880,7 +894,9 @@ class _TranscriptXMLExporter:
         page_layout: PageLayout,
         output: Path,
     ) -> None:
-        _validate(document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptXMLExporter")
+        _validate(
+            document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptXMLExporter"
+        )
 
         output_path = _prepare(output)
 
@@ -930,7 +946,9 @@ class _TranscriptJsonExporter:
         page_layout: PageLayout,
         output: Path,
     ) -> None:
-        _validate(document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptJsonExporter")
+        _validate(
+            document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptJsonExporter"
+        )
 
         output_path = _prepare(output)
 
@@ -975,7 +993,7 @@ class _TranscriptDocxExporter:
 
     # A3/A4/A5 in twips (1/1440 inch), portrait: (width, height) - the same constants
     # the Java exporter feeds into CTPageSz.
-    _PAGE_SIZES: dict[PageFormat, tuple[int, int]] = {
+    _PAGE_SIZES: ClassVar[dict[PageFormat, tuple[int, int]]] = {
         PageFormat.A3: (16838, 23811),
         PageFormat.A4: (11906, 16838),
         PageFormat.A5: (8391, 11906),
@@ -991,7 +1009,9 @@ class _TranscriptDocxExporter:
         page_layout: PageLayout,
         output: Path,
     ) -> None:
-        _validate(document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptDocxExporter")
+        _validate(
+            document_title, column_headers, sections, legend_entries, page_layout, output, "TranscriptDocxExporter"
+        )
 
         from docx import Document
 

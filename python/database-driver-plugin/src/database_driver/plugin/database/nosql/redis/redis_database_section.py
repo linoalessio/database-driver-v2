@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from database_driver.api.database.entity.database_entry import DatabaseEntry
 from database_driver.api.database.exception.no_such_data_found import NoSuchDataFound
 from database_driver.api.database.section_config import SectionConfig
 from database_driver.api.json.json_document import JsonDocument
+
 from database_driver.plugin.database.abstract_cached_database_section import AbstractCachedDatabaseSection
 
 CHANGE_NOTIFICATION_CHANNEL = "database-driver-changes"
@@ -62,7 +63,7 @@ class RedisDatabaseSection(AbstractCachedDatabaseSection):
                 raise NoSuchDataFound(key_text)
             consumer(DatabaseEntry(key_text.replace(prefix, ""), JsonDocument(data)))
 
-    def fetch_one(self, id: str) -> Optional[DatabaseEntry]:
+    def fetch_one(self, id: str) -> DatabaseEntry | None:
         """A single ``GET`` on the entry's full key - Redis' native point read."""
         data = self.client.get(self._entry_key(id))
         return None if data is None else DatabaseEntry(id, JsonDocument(data))

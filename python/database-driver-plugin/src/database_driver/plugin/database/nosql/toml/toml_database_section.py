@@ -5,7 +5,6 @@ from __future__ import annotations
 import traceback
 from collections.abc import Callable
 from pathlib import Path
-from typing import Optional
 
 from database_driver.api.database.auth.credentials import Credentials
 from database_driver.api.database.entity.database_entry import DatabaseEntry
@@ -13,6 +12,7 @@ from database_driver.api.database.exception.no_such_data_found import NoSuchData
 from database_driver.api.database.section_config import SectionConfig
 from database_driver.api.json.file.file_provider import FileProvider
 from database_driver.api.json.json_document import JsonDocument
+
 from database_driver.plugin.database.abstract_cached_database_section import AbstractCachedDatabaseSection
 from database_driver.plugin.database.nosql.toml import toml_document_mapper
 
@@ -70,7 +70,7 @@ class TOMLDatabaseSection(AbstractCachedDatabaseSection):
         for path in self.parent.glob(f"*{_EXTENSION}"):
             consumer(self._read_entry(path.stem, path))
 
-    def fetch_one(self, id: str) -> Optional[DatabaseEntry]:
+    def fetch_one(self, id: str) -> DatabaseEntry | None:
         """A single file lookup: the entry exists exactly if its ``<id>.toml`` file
         does."""
         path = self._entry_file(id)

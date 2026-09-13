@@ -22,9 +22,10 @@ jobs:
     strategy:
       matrix:
         python-version: [ "3.11", "3.12", "3.13" ]
+        package: [ database-driver-api, database-driver-plugin ]
     defaults:
       run:
-        working-directory: python/database-driver-api
+        working-directory: python/${{ matrix.package }}
 
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +35,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+
+      # The plugin depends on the api package; installing the sibling from the same
+      # checkout keeps the two testable against each other's current state.
+      - name: Install sibling api package (plugin only)
+        if: matrix.package == 'database-driver-plugin'
+        run: pip install -e ../database-driver-api
 
       - name: Install
         run: pip install -e .[dev]

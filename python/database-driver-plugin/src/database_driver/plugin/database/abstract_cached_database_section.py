@@ -9,7 +9,6 @@ import time
 from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Optional
 
 from database_driver.api.database.cache_mode import CacheMode
 from database_driver.api.database.database_section import DatabaseSection
@@ -65,7 +64,7 @@ class _MaxHeapById:
     def __init__(self, entry: DatabaseEntry) -> None:
         self.entry = entry
 
-    def __lt__(self, other: "_MaxHeapById") -> bool:
+    def __lt__(self, other: _MaxHeapById) -> bool:
         return self.entry.id > other.entry.id
 
 
@@ -145,7 +144,7 @@ class AbstractCachedDatabaseSection(DatabaseSection):
         engine - not the backend - decides what to do with the streamed entries."""
 
     @abstractmethod
-    def fetch_one(self, id: str) -> Optional[DatabaseEntry]:
+    def fetch_one(self, id: str) -> DatabaseEntry | None:
         """Reads the single row stored under ``id`` directly from the backing store,
         bypassing any in-memory state. This is the point read behind ``NONE``'s
         ``find_entry_by_id`` and the loader behind ``BOUNDED``'s cache; backends without
@@ -206,7 +205,7 @@ class AbstractCachedDatabaseSection(DatabaseSection):
         if self._config.cache_mode is CacheMode.FULL:
             self._ensure_loaded()
 
-    def cached_entry(self, id: str) -> Optional[DatabaseEntry]:
+    def cached_entry(self, id: str) -> DatabaseEntry | None:
         """The engine's current in-memory view of ``id``, for the rare storage primitive
         whose on-disk format needs the *previous* row state to build the next one (see
         the JSON store's merge-style ``persist_update``). In the map-backed modes this
@@ -228,10 +227,11 @@ class AbstractCachedDatabaseSection(DatabaseSection):
         a no-op - its reads never left the backing store in the first place."""
         mode = self._config.cache_mode
         if mode is CacheMode.FULL:
-            assert self._entries is not None
+            entries = self._entries
+            assert entries is not None
             with self._load_lock:
-                self._entries.clear()
-                self._stream_all(lambda entry: self._entries.__setitem__(entry.id, entry))  # type: ignore[union-attr]
+                entries.clear()
+                self._stream_all(lambda entry: entries.__setitem__(entry.id, entry))
                 self._loaded = True
         elif mode is CacheMode.LAZY:
             assert self._entries is not None
@@ -352,7 +352,7 @@ class AbstractCachedDatabaseSection(DatabaseSection):
             return id in self._entries
         return self.exists_remote(id)
 
-    def find_entry_by_id(self, id: str) -> Optional[DatabaseEntry]:
+    def find_entry_by_id(self, id: str) -> DatabaseEntry | None:
         with self._counter_lock:
             self._point_lookups += 1
 
@@ -404,9 +404,13 @@ class AbstractCachedDatabaseSection(DatabaseSection):
         :meth:`page_remote`, which backends override to push the paging into the store
         where they can."""
         if offset < 0:
-            raise ValueError(f"@AbstractCachedDatabaseSection.get_entries_page: offset must not be negative, got {offset}")
+            raise ValueError(
+                f"@AbstractCachedDatabaseSection.get_entries_page: offset must not be negative, got {offset}"
+            )
         if limit < 0:
-            raise ValueError(f"@AbstractCachedDatabaseSection.get_entries_page: limit must not be negative, got {limit}")
+            raise ValueError(
+                f"@AbstractCachedDatabaseSection.get_entries_page: limit must not be negative, got {limit}"
+            )
         if limit == 0:
             return []
 
@@ -464,12 +468,13 @@ class AbstractCachedDatabaseSection(DatabaseSection):
         with self._load_lock:
             if self._loaded:
                 return
-            assert self._entries is not None
-            self._entries.clear()
-            self._stream_all(lambda entry: self._entries.__setitem__(entry.id, entry))  # type: ignore[union-attr]
+            entries = self._entries
+            assert entries is not None
+            entries.clear()
+            self._stream_all(lambda entry: entries.__setitem__(entry.id, entry))
             self._loaded = True
 
-    def _bounded_lookup(self, id: str) -> Optional[DatabaseEntry]:
+    def _bounded_lookup(self, id: str) -> DatabaseEntry | None:
         """``BOUNDED``'s read path: a cache hit is served from memory, a miss runs
         :meth:`_load_entry` once even under concurrent misses (the cache's stampede
         protection) and caches the result. The loader signals a missing row by failing

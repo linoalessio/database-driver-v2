@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "database-driver-api"
 version = "0.1.0"
 description = "Unified API contracts over many SQL and NoSQL backends - the Python mirror of de.lino.database:database-driver-api."
-readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [{ name = "Lino Alessio Kauschinger" }]
