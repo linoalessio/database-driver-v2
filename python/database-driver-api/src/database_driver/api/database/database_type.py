@@ -19,18 +19,18 @@ class DatabaseType(Enum):
     ``"NULL"`` where none is involved.
     """
 
-    MY_SQL = ("mysql", "aiomysql")
-    """MySQL, accessed through the aiomysql driver."""
+    MY_SQL = ("mysql", "pymysql")
+    """MySQL, accessed through the PyMySQL driver."""
 
-    POSTGRES_SQL = ("postgresql", "asyncpg")
-    """PostgreSQL, accessed through the asyncpg driver."""
+    POSTGRES_SQL = ("postgresql", "psycopg")
+    """PostgreSQL, accessed through the psycopg (v3) driver."""
 
     H2_DB = ("h2", "NULL")
     """H2 - an embedded JVM database with no Python driver; unsupported by the Python
     plugin module, present only for contract parity with the Java edition."""
 
-    MONGO_DB = ("mongo", "motor")
-    """MongoDB, accessed through the Motor async driver."""
+    MONGO_DB = ("mongo", "pymongo")
+    """MongoDB, accessed through the PyMongo driver."""
 
     RETHINK_DB = ("rethink", "rethinkdb")
     """RethinkDB, accessed through the rethinkdb driver."""
@@ -48,11 +48,12 @@ class DatabaseType(Enum):
     TOML's model limits (no ``null`` values, homogeneous arrays only; see the store's own
     documentation)."""
 
-    MARIA_DB = ("mariadb", "aiomysql")
-    """MariaDB, accessed through the aiomysql driver (protocol-compatible with MySQL)."""
+    MARIA_DB = ("mariadb", "pymysql")
+    """MariaDB, accessed through the PyMySQL driver (protocol-compatible with MySQL)."""
 
-    SQLITE = ("sqlite", "aiosqlite")
-    """SQLite, accessed through the aiosqlite driver."""
+    SQLITE = ("sqlite", "sqlite3")
+    """SQLite, accessed through the stdlib :mod:`sqlite3` module - the one backend whose
+    driver ships with Python itself."""
 
     ORACLE = ("oracle:thin", "oracledb")
     """Oracle Database, accessed through the python-oracledb thin driver."""
@@ -65,7 +66,7 @@ class DatabaseType(Enum):
     Python plugin module, present only for contract parity with the Java edition."""
 
     REDIS = ("redis", "redis")
-    """Redis, accessed through redis-py's asyncio client."""
+    """Redis, accessed through the redis-py client."""
 
     def __init__(self, type: str, driver_package: str) -> None:
         self.type = type

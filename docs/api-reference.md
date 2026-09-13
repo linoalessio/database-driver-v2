@@ -110,9 +110,12 @@ All 14 constants, with what each edition needs to use them:
 | `CSV` | file store | none needed | none needed |
 
 Each constant also carries a `type` string (the JDBC URL sub-protocol, e.g. `"postgresql"`,
-`"oracle:thin"`) and driver-class metadata. The Python enum's `driver_package` field is
-metadata nothing reads, and for some constants it names drivers other than the ones the
-implementation actually imports — trust the table above, which reflects the code.
+`"oracle:thin"`) and driver metadata: the Java enum's `driverClass` is the JDBC class name the
+connection pool is pointed at for the SQL backends (the NoSQL constants carry placeholder values
+no code path reads), the Python enum's `driver_package` the import name of the driver the plugin
+actually connects through (`"NULL"` where no driver is involved). The Python field is
+informational — the plugin's lazy imports name their modules directly — and matches the table
+above.
 
 ## `DatabaseEntry`, `JsonDocument`, `Serialized`
 
