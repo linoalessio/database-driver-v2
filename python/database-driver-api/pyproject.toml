@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "database-driver-api"
+version = "0.1.0"
+description = "Unified API contracts over many SQL and NoSQL backends - the Python mirror of de.lino.database:database-driver-api."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Lino Alessio Kauschinger" }]
+keywords = ["database", "driver", "sql", "nosql", "async", "cache"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Typing :: Typed",
+]
+
+# Deliberately empty, and meant to stay that way. The Java -api module ships only
+# Guava/Gson/Lombok/annotations and no database drivers; the Python mirror needs none of
+# those - dataclasses, enum, abc and the stdlib json module cover everything the contracts
+# require - so a consumer compiling against these contracts pulls in nothing at all.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/linoalessio/database-driver-v2"
+Source = "https://github.com/linoalessio/database-driver-v2/tree/master/python/database-driver-api"
+
+[tool.hatch.build.targets.wheel]
+# PEP 420 namespace package: `src/database_driver/` deliberately has no __init__.py, so
+# `database-driver-plugin` can install into the same `database_driver.*` import root as a
+# separate distribution - the direct analogue of two Maven artifacts sharing the
+# `de.lino.database` package root.
+packages = ["src/database_driver"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "RUF"]
+# N818 (exception names should end in Error) is deliberately off: the exception names
+# mirror the Java edition's (DataAlreadyExist, NoSuchEntryFound, ...) one-for-one, and
+# contract parity outranks the naming convention here.
+ignore = ["N818"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["database_driver.api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

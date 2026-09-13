@@ -41,3 +41,12 @@ release-and-package.sh
 
 ### AI ###
 CLAUDE.md
+### Python (python/ mirror) ###
+__pycache__/
+*.pyc
+*.egg-info/
+python/**/dist/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

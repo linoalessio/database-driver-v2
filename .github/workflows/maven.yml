@@ -10,10 +10,12 @@ on:
     branches: [ "master" ]
     paths-ignore:
       - '**/*.md'
+      - 'python/**'
   pull_request:
     branches: [ "master" ]
     paths-ignore:
       - '**/*.md'
+      - 'python/**'
   workflow_dispatch:
 
 jobs:

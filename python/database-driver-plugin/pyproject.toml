@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lino-database-driver-plugin"
+version = "0.1.0"
+description = "The concrete providers, caches and export coordinator behind lino-database-driver-api - the Python mirror of de.lino.database:database-driver-plugin."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Lino Alessio Kauschinger" }]
+keywords = ["database", "driver", "sql", "nosql", "async", "cache", "export"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Typing :: Typed",
+]
+
+# The file stores (JSON, CSV, TOML), the SQLite backend (stdlib sqlite3), both cache
+# implementations and the registry work with just these; every network backend and the
+# office-format exporters are optional extras below - unlike the Java module, which
+# bundles every driver jar, pip's extras mechanism lets a consumer pull in exactly the
+# backends they use.
+dependencies = [
+    "lino-database-driver-api>=0.1.0",
+    "tomli-w>=1.0",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+mysql = ["pymysql>=1.1"]
+mssql = ["pymssql>=2.2"]
+oracle = ["oracledb>=2.0"]
+mongodb = ["pymongo>=4.6"]
+redis = ["redis>=5.0"]
+rethinkdb = ["rethinkdb>=2.4"]
+export = ["reportlab>=4.0", "openpyxl>=3.1", "python-docx>=1.1"]
+all = [
+    "lino-database-driver-plugin[postgres,mysql,mssql,oracle,mongodb,redis,rethinkdb,export]",
+]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "lino-database-driver-plugin[export]",
+]
+
+# The Python packaging analogue of the Java module's
+# META-INF/services/de.lino.database.utils.cache.provider.CacheProvider resource: the
+# api package's Caches discovers this class through the entry-point group at runtime.
+[project.entry-points."database_driver.cache_provider"]
+default = "database_driver.plugin.utility.cache.provider.default_cache_provider:DefaultCacheProvider"
+
+[project.urls]
+Homepage = "https://github.com/LinoKauschinger/database-driver-v2"
+Source = "https://github.com/LinoKauschinger/database-driver-v2/tree/master/python/database-driver-plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/database_driver"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "RUF"]
+# N818 off for the same reason as the api package: exception names mirror the Java
+# edition's one-for-one.
+ignore = ["N818"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["database_driver.plugin"]
+# Not strict (unlike -api): the storage-primitive layer talks to seven third-party
+# drivers, most of which ship no type stubs.
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

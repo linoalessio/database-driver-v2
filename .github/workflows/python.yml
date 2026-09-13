@@ -1,0 +1,48 @@
+# CI for the Python mirror under python/. Runs only when Python sources change, the
+# counterpart of maven.yml ignoring python/** - so a commit touching one edition never
+# builds the other.
+name: Python CI
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'python/**'
+      - '.github/workflows/python.yml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'python/**'
+      - '.github/workflows/python.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ "3.11", "3.12", "3.13" ]
+    defaults:
+      run:
+        working-directory: python/database-driver-api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e .[dev]
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Type-check
+        run: mypy
+
+      - name: Test
+        run: pytest -q
