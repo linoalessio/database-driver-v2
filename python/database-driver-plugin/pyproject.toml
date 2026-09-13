@@ -71,8 +71,8 @@ dev = [
 default = "database_driver.plugin.utility.cache.provider.default_cache_provider:DefaultCacheProvider"
 
 [project.urls]
-Homepage = "https://github.com/LinoKauschinger/database-driver-v2"
-Source = "https://github.com/LinoKauschinger/database-driver-v2/tree/master/python/database-driver-plugin"
+Homepage = "https://github.com/linoalessio/database-driver-v2"
+Source = "https://github.com/linoalessio/database-driver-v2/tree/master/python/database-driver-plugin"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/database_driver"]
