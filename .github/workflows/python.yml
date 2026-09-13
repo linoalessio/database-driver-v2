@@ -36,14 +36,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      # The plugin depends on the api package; installing the sibling from the same
-      # checkout keeps the two testable against each other's current state.
-      - name: Install sibling api package (plugin only)
+      # The plugin requires lino-database-driver-api, which is published to no index -
+      # both paths go into ONE pip invocation so the resolver satisfies that requirement
+      # from this checkout instead of searching PyPI for it. Two separate installs would
+      # fail: the second call re-resolves the plugin's own requirements from scratch.
+      - name: Install (plugin, with the sibling api package from this checkout)
         if: matrix.package == 'database-driver-plugin'
-        run: pip install -e ../database-driver-api
+        run: pip install -e ../database-driver-api -e ".[dev]"
 
-      - name: Install
-        run: pip install -e .[dev]
+      - name: Install (api)
+        if: matrix.package == 'database-driver-api'
+        run: pip install -e ".[dev]"
 
       - name: Lint
         run: ruff check src tests

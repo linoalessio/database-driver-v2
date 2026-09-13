@@ -369,15 +369,22 @@ repository (the plugin depends on the api package, so install both):
 
 ```bash
 git clone https://github.com/linoalessio/database-driver-v2.git
-pip install ./database-driver-v2/python/database-driver-api
-pip install ./database-driver-v2/python/database-driver-plugin
+cd database-driver-v2/python
 
-# network backends and office-format exporters are opt-in extras:
-pip install "./database-driver-v2/python/database-driver-plugin[postgres]"   # or mysql, mssql,
-                                                                             # oracle, mongodb,
-                                                                             # redis, rethinkdb,
-pip install "./database-driver-v2/python/database-driver-plugin[export]"     # export, all
+# Both paths in ONE pip call: the plugin requires lino-database-driver-api, which is
+# published to no index, so the resolver must see the sibling in the same invocation.
+pip install ./database-driver-api ./database-driver-plugin
 ```
+
+Network backends and the office-format exporters are opt-in extras
+(`postgres`, `mysql`, `mssql`, `oracle`, `mongodb`, `redis`, `rethinkdb`, `export`, `all`):
+
+```bash
+pip install ./database-driver-api "./database-driver-plugin[postgres,export]"
+```
+
+Without any extra you still get the JSON/TOML/CSV file stores, SQLite, both cache
+implementations and the stdlib exporters (CSV/XML/JSON + zip archives).
 
 ## Quick Start
 

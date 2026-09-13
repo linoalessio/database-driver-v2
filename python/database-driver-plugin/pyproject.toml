@@ -39,14 +39,29 @@ mongodb = ["pymongo>=4.6"]
 redis = ["redis>=5.0"]
 rethinkdb = ["rethinkdb>=2.4"]
 export = ["reportlab>=4.0", "openpyxl>=3.1", "python-docx>=1.1"]
+# The extras below repeat their dependency lists instead of self-referencing
+# "lino-database-driver-plugin[...]": a self-referential extra makes pip resolve this
+# package through an index, which fails for as long as the distribution is unpublished
+# (and breaks every from-source install either way).
 all = [
-    "lino-database-driver-plugin[postgres,mysql,mssql,oracle,mongodb,redis,rethinkdb,export]",
+    "psycopg[binary]>=3.1",
+    "pymysql>=1.1",
+    "pymssql>=2.2",
+    "oracledb>=2.0",
+    "pymongo>=4.6",
+    "redis>=5.0",
+    "rethinkdb>=2.4",
+    "reportlab>=4.0",
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
 ]
 dev = [
     "pytest>=8.0",
     "mypy>=1.11",
     "ruff>=0.6",
-    "lino-database-driver-plugin[export]",
+    "reportlab>=4.0",
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
 ]
 
 # The Python packaging analogue of the Java module's

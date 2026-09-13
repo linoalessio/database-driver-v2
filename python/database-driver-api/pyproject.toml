@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "database-driver-api"
+name = "lino-database-driver-api"
 version = "0.1.0"
 description = "Unified API contracts over many SQL and NoSQL backends - the Python mirror of de.lino.database:database-driver-api."
 requires-python = ">=3.11"
